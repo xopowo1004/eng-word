@@ -458,60 +458,110 @@ function renderDifficulty() {
   document.getElementById('diff-grid').innerHTML = DIFFICULTIES.map(d => `<div class="diff-card ${d.cls}" onclick="selectDiff(${d.id})"><div class="diff-emoji">${d.emoji}</div><div class="diff-name">${d.name}</div></div>`).join('');
 }
 function selectDiff(id) { gameState.diff = id; renderLevels(id); showScreen('screen-levels'); }
-function renderLevels(diffId) {
-  const words = state.words
-    .filter(w => Number(w.diff) === Number(diffId))
-    .map(w => ({ ...w, level: Number(w.level) || 1 }));
 
-  const levelSet = new Set(words.map(w => w.level));
-  const levels = [...levelSet].sort((a, b) => a - b);
+// ────────────────────────────────────────────────────────────
+//  레벨 매핑: 가상레벨(VL, 화면표시 1~40) ↔ 실제레벨(RL, Firestore 1~32)
+//
+//  구조: 4개 신규레벨 + 1개 복습레벨 = 5레벨 단위 반복 (8회 = 40레벨)
+//  VL1~4  → RL1~4 (신규 단어 10개씩)
+//  VL5    → 복습: RL1,2,3,4 단어 합산 (최대 40개)
+//  VL6~9  → RL5~8
+//  VL10   → 복습: RL5,6,7,8
+//  ...
+//  VL36~39→ RL29~32
+//  VL40   → 복습: RL29,30,31,32
+// ────────────────────────────────────────────────────────────
+function isReviewLevel(vl) {
+  return Number(vl) % 5 === 0;
+}
 
-  if (levels.length === 0) {
-    document.getElementById('level-list').innerHTML = '<p style="color:var(--text2); text-align:center; padding:30px;">이 난이도에 단어가 없습니다.</p>';
-    return;
+// 가상레벨 → 실제레벨 (복습이면 null)
+function virtualToReal(vl) {
+  vl = Number(vl);
+  if (isReviewLevel(vl)) return null;
+  // 앞에 삽입된 복습레벨 수만큼 빼줌
+  return vl - Math.floor(vl / 5);
+}
+
+// 복습레벨에 해당하는 실제레벨 배열 반환
+// VL5→[1,2,3,4]  VL10→[5,6,7,8]  VL40→[29,30,31,32]
+function getReviewRealLevels(vl) {
+  vl = Number(vl);
+  const group = vl / 5;                    // 몇 번째 복습 (1,2,...8)
+  const startRL = (group - 1) * 4 + 1;    // 해당 그룹 첫 실제레벨
+  return [startRL, startRL+1, startRL+2, startRL+3];
+}
+
+// 해당 가상레벨의 단어 가져오기
+function getWordsForVL(diffId, vl) {
+  vl = Number(vl);
+  diffId = Number(diffId);
+  if (isReviewLevel(vl)) {
+    // 복습: 앞 4개 실제레벨 단어 모두 합산
+    const rls = getReviewRealLevels(vl);
+    return state.words.filter(w =>
+      Number(w.diff) === diffId && rls.includes(Number(w.level))
+    );
+  } else {
+    const rl = virtualToReal(vl);
+    return state.words.filter(w =>
+      Number(w.diff) === diffId && Number(w.level) === rl
+    );
   }
+}
+function renderLevels(diffId) {
   const u = state.users.find(u => u.id === state.currentUserId);
   let html = '';
-  levels.forEach((lv, idx) => {
-    const wordsInLevel = words.filter(w => w.level === lv);
-    const prog = (u.progress||{})[`${diffId}_${lv}`] || {};
-    const isReview = lv % 5 === 0; // 5의 배수 = 복습 레벨
-    const prevLv = levels[idx - 1];
-    const locked = idx > 0 && !(u.progress[`${diffId}_${prevLv}`]?.passed);
+
+  // 항상 가상레벨 1~40을 표시
+  for (let vl = 1; vl <= 40; vl++) {
+    const wordsInLevel = getWordsForVL(diffId, vl);
+    const isReview = isReviewLevel(vl);
+    const progKey = `${diffId}_vl${vl}`;
+    const prog = (u.progress || {})[progKey] || {};
+
+    // 잠금: 첫 레벨 제외, 이전 가상레벨 통과해야 열림
+    const prevKey = `${diffId}_vl${vl - 1}`;
+    const locked = vl > 1 && !((u.progress || {})[prevKey]?.passed);
 
     const lockIcon = locked ? '🔒 ' : (isReview ? '🔄 ' : '');
     const statusHtml = prog.passed
       ? '<span style="color:var(--success); font-weight:800; font-size:13px;">✅ 통과</span>'
-      : prog.score != null && prog.score !== undefined && prog.score !== ''
+      : (prog.score != null && prog.score !== '')
         ? `<span style="color:var(--accent); font-size:13px;">${prog.score}점</span>`
         : (isReview ? '<span style="font-size:11px; color:var(--accent2); font-weight:700;">복습</span>' : '');
 
+    const subLabel = isReview
+      ? `앞 4레벨 복습 · ${wordsInLevel.length}단어`
+      : `신규 단어 ${wordsInLevel.length}개`;
+
     html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px;
       background:rgba(255,255,255,${locked ? 0.02 : isReview ? 0.1 : 0.06}); border-radius:14px; margin-bottom:8px;
-      border:1.5px solid rgba(255,255,255,${locked ? 0.05 : isReview ? 0.25 : 0.12}); opacity:${locked ? 0.4 : 1};
+      border:1.5px solid rgba(255,255,255,${locked ? 0.05 : isReview ? 0.3 : 0.12}); opacity:${locked ? 0.4 : 1};
       cursor:${locked ? 'not-allowed' : 'pointer'};"
-      onclick="${locked ? '' : `enterStudy(${diffId},${lv})`}">
+      onclick="${locked ? '' : `enterStudy(${diffId},${vl})`}">
       <div>
-        <div style="font-weight:800; font-size:15px; color:${isReview ? 'var(--accent2)' : 'var(--text)'};">${lockIcon}레벨 ${lv}${isReview ? ' · 복습' : ''}</div>
-        <div style="font-size:12px; color:var(--text2); margin-top:2px;">단어 ${wordsInLevel.length}개</div>
+        <div style="font-weight:800; font-size:15px; color:${isReview ? 'var(--accent2)' : 'var(--text)'};">${lockIcon}레벨 ${vl}${isReview ? ' · 복습' : ''}</div>
+        <div style="font-size:12px; color:var(--text2); margin-top:2px;">${subLabel}</div>
       </div>
       <div>${statusHtml}</div>
     </div>`;
-  });
+  }
   document.getElementById('level-list').innerHTML = html;
 }
 
-function enterStudy(diff, level) {
-  // diff/level 숫자 정규화
-  const words = state.words.filter(w => Number(w.diff) === Number(diff) && (Number(w.level) || 1) === Number(level));
-  // 영어 알파벳 순으로 정렬하여 일관된 순서 보장
+function enterStudy(diff, vl) {
+  vl = Number(vl);
+  const words = getWordsForVL(diff, vl);
   words.sort((a, b) => a.en.localeCompare(b.en));
   gameState.currentWords = words;
-  gameState.diff = diff;
-  gameState.level = level;
-  const isReview = Number(level) % 5 === 0;
+  gameState.diff = Number(diff);
+  gameState.level = vl;
+  const isReview = isReviewLevel(vl);
   const titleEl = document.getElementById('study-title');
-  if(titleEl) titleEl.textContent = isReview ? `레벨 ${level} · 복습 (${words.length}단어)` : `레벨 ${level} · 단어 (${words.length}개)`;
+  if (titleEl) titleEl.textContent = isReview
+    ? `레벨 ${vl} · 복습 (${words.length}단어)`
+    : `레벨 ${vl} · 신규 단어 (${words.length}개)`;
   document.getElementById('study-list').innerHTML = words.length === 0
     ? '<p style="color:var(--text2); text-align:center; padding:20px;">이 레벨에 단어가 없습니다.</p>'
     : words.map(w => `<div class="study-item"><div class="study-en">${w.en}</div><div>${w.ko}</div></div>`).join('');
@@ -532,7 +582,10 @@ let matchState = { selectedLeft: null, matched: 0, pairs: [], total: 0 };
 
 function launchGame() {
   const allInDiff = state.words.filter(w => Number(w.diff) === Number(gameState.diff));
-  const words = shuffleArr(gameState.currentWords).slice(0, Math.min(10, gameState.currentWords.length));
+  // 복습레벨은 합산된 단어 전체(최대 40개), 일반레벨은 10개
+  const _isRevLv = isReviewLevel(gameState.level);
+  const _wordLimit = _isRevLv ? gameState.currentWords.length : Math.min(10, gameState.currentWords.length);
+  const words = shuffleArr(gameState.currentWords).slice(0, _wordLimit);
 
   // 게임 타입 분배: 15문제 중 각 타입 골고루
   const types = shuffleArr([
@@ -893,7 +946,7 @@ function endLevel() {
   const score = Math.round(gameState.score / maxScore * 100);
   const passed = score >= 80;
   const u = state.users.find(u => u.id === state.currentUserId);
-  u.progress[`${gameState.diff}_${gameState.level}`] = { passed, score };
+  u.progress[`${gameState.diff}_vl${gameState.level}`] = { passed, score };
   saveLocal(); showScreen('screen-result');
   document.getElementById('result-circle').textContent = score + '%';
   document.getElementById('result-circle').style.background = passed ? 'var(--success)' : 'var(--danger)';
