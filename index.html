@@ -173,7 +173,7 @@
     <div class="game-header">
       <button onclick="confirmQuitGame()" style="background:none; border:none; color:white; font-size:20px;">✕</button>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="game-progress-bar"></div></div>
-      <div style="font-weight:800; color:var(--accent);">⭐ <span id="game-score">0</span></div>
+      <div style="font-weight:800; color:var(--accent); font-size:14px;">⭐ <span id="game-score">0</span><span style="color:var(--text2); font-size:11px;">/100</span></div>
     </div>
     <div id="game-area"></div>
   </div>
@@ -582,61 +582,80 @@ let matchState = { selectedLeft: null, matched: 0, pairs: [], total: 0 };
 
 function launchGame() {
   const allInDiff = state.words.filter(w => Number(w.diff) === Number(gameState.diff));
-  // 복습레벨은 합산된 단어 전체(최대 40개), 일반레벨은 10개
-  const _isRevLv = isReviewLevel(gameState.level);
-  const _wordLimit = _isRevLv ? gameState.currentWords.length : Math.min(10, gameState.currentWords.length);
-  const words = shuffleArr(gameState.currentWords).slice(0, _wordLimit);
+  const isRevLv = isReviewLevel(gameState.level);
 
-  // 게임 타입 분배: 15문제 중 각 타입 골고루
-  const types = shuffleArr([
-    'mc','mc','mc',
-    'mc_en','mc_en','mc_en',
-    'gap','gap','gap',
-    'anagram','anagram','anagram',
-    'match','match','match'
-  ]);
+  // 문제 수 & 배점 고정
+  const TOTAL_Q  = isRevLv ? 25 : 20;   // 총 문제 수
+  const PT_EACH  = isRevLv ? 4  : 5;    // 문제당 점수 (합계 = 100점)
 
-  const qPool = [];
-  let matchBuffer = [];
+  gameState.pointEach = PT_EACH;         // endLevel에서 참조
 
-  for(let i=0; i<15; i++) {
-    const type = types[i];
-    if(type === 'match') {
-      // 매칭은 단어 3쌍을 묶어서 1문제로
-      matchBuffer.push(words[i % words.length]);
-      if(matchBuffer.length === 3) {
-        qPool.push({ type: 'match', pairs: [...matchBuffer] });
-        matchBuffer = [];
-      } else {
-        // 아직 3개 안 모였으면 mc로 대체
-        qPool.push({ word: words[i % words.length], type: 'mc', distractors: shuffleArr(allInDiff.filter(x => x.id !== words[i % words.length].id)).slice(0,3) });
+  // 사용할 단어 풀 (일반: 최대 10개 단어, 복습: 전체)
+  const wordPool = shuffleArr(gameState.currentWords)
+    .slice(0, isRevLv ? gameState.currentWords.length : Math.min(10, gameState.currentWords.length));
+
+  // 게임 유형 배분 (match는 3단어 묶음 1문제)
+  // 일반: mc5 mc_en5 gap4 anagram4 match2  → 20문제
+  // 복습: mc6 mc_en6 gap5 anagram5 match3  → 25문제
+  const typePlan = isRevLv
+    ? ['mc','mc','mc','mc','mc','mc',
+       'mc_en','mc_en','mc_en','mc_en','mc_en','mc_en',
+       'gap','gap','gap','gap','gap',
+       'anagram','anagram','anagram','anagram','anagram',
+       'match','match','match']
+    : ['mc','mc','mc','mc','mc',
+       'mc_en','mc_en','mc_en','mc_en','mc_en',
+       'gap','gap','gap','gap',
+       'anagram','anagram','anagram','anagram',
+       'match','match'];
+
+  const types = shuffleArr([...typePlan]);
+
+  const questions = [];
+  let matchBuf   = [];
+  let wordIdx    = 0;
+
+  const nextWord = () => {
+    const w = wordPool[wordIdx % wordPool.length];
+    wordIdx++;
+    return w;
+  };
+
+  for (const type of types) {
+    if (type === 'match') {
+      // 3단어 모이면 match 1문제 생성
+      matchBuf.push(nextWord());
+      if (matchBuf.length === 3) {
+        // 중복 제거
+        const uniq = [...new Map(matchBuf.map(w => [w.id, w])).values()];
+        if (uniq.length === 3) {
+          questions.push({ type: 'match', pairs: uniq });
+        } else {
+          // 중복 있으면 mc로 대체
+          const w = uniq[0];
+          const dist = shuffleArr(allInDiff.filter(x => x.id !== w.id)).slice(0, 3);
+          questions.push({ type: 'mc', word: w, distractors: dist });
+        }
+        matchBuf = [];
       }
-      continue;
+    } else {
+      const word = nextWord();
+      const distractors = shuffleArr(allInDiff.filter(x => x.id !== word.id)).slice(0, 3);
+      questions.push({ type, word, distractors });
     }
-    const word = words[i % words.length];
-    const distractors = shuffleArr(allInDiff.filter(x => x.id !== word.id)).slice(0,3);
-    qPool.push({ word, type, distractors });
   }
 
-  // 남은 matchBuffer 처리
-  while(matchBuffer.length > 0 && matchBuffer.length < 3) {
-    const extra = shuffleArr(allInDiff.filter(w => !matchBuffer.find(m => m.id === w.id)))[0];
-    if(extra) matchBuffer.push(extra); else break;
-  }
-  if(matchBuffer.length === 3) {
-    qPool.push({ type: 'match', pairs: [...matchBuffer] });
+  // matchBuf 잔여 처리 (mc로 대체)
+  for (const w of matchBuf) {
+    const dist = shuffleArr(allInDiff.filter(x => x.id !== w.id)).slice(0, 3);
+    questions.push({ type: 'mc', word: w, distractors: dist });
   }
 
-  // 중복 제거 후 매칭 문제만 추출, 나머지로 15개 채우기
-  const matchQs = qPool.filter(q => q.type === 'match');
-  const otherQs = qPool.filter(q => q.type !== 'match');
-  
-  // 매칭 최대 2문제, 나머지는 일반 문제
-  const finalPool = shuffleArr([...matchQs.slice(0, 2), ...otherQs]).slice(0, 15);
-  
-  gameState.questions = finalPool;
-  gameState.qIdx = 0; gameState.score = 0;
-  showScreen('screen-game'); renderQuestion();
+  gameState.questions = questions.slice(0, TOTAL_Q);
+  gameState.qIdx  = 0;
+  gameState.score = 0;
+  showScreen('screen-game');
+  renderQuestion();
 }
 
 function renderQuestion() {
@@ -702,7 +721,7 @@ function checkMC(idx, cid, qid, wordEn, wordKo) {
       if(b.getAttribute('data-id') === qid) b.classList.add('correct');
     });
   }
-  if(isCorrect) gameState.score += 10;
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
   setTimeout(() => showAnswerOverlay(isCorrect, wordEn, wordKo, nextQ), 400);
 }
 
@@ -785,7 +804,7 @@ function checkGapTile() {
   const { indices, filled } = gapState;
   const correct = indices.map(i => en[i].toUpperCase());
   const isCorrect = filled.every((v, i) => v === correct[i]);
-  if(isCorrect) gameState.score += 10;
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
   showAnswerOverlay(isCorrect, en, document.querySelector('.question-word strong')?.textContent || '', nextQ);
 }
 
@@ -870,7 +889,7 @@ function submitAnagram(correct, skip=false) {
   if(skip) { showAnswerOverlay(false, correct, meaning, nextQ); return; }
   const typed = anagramState.answer.map(a => a.letter).join('').toLowerCase();
   const isCorrect = typed === correct.toLowerCase();
-  if(isCorrect) gameState.score += 10;
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
   showAnswerOverlay(isCorrect, correct, meaning, nextQ);
 }
 
@@ -911,30 +930,31 @@ function matchSelectLeft(i) {
 
 function matchSelectRight(j) {
   if(matchState.selectedLeft === null) { showToast('왼쪽에서 단어를 먼저 선택하세요!'); return; }
-  const leftIdx = matchState.selectedLeft;
+  const leftIdx  = matchState.selectedLeft;
   const leftWord = matchState.leftItems[leftIdx];
-  const rightWord = matchState.rightItems[j];
-  const leftBtn = document.getElementById('ml-'+leftIdx);
+  const rightWord= matchState.rightItems[j];
+  const leftBtn  = document.getElementById('ml-'+leftIdx);
   const rightBtn = document.getElementById('mr-'+j);
   if(!rightBtn || rightBtn.classList.contains('matched')) return;
 
   if(leftWord.id === rightWord.id) {
-    // 정답
     leftBtn.classList.remove('selected-left');
     leftBtn.classList.add('matched');
     rightBtn.classList.add('matched');
     matchState.matched++;
-    gameState.score += 5;
     if(matchState.matched === matchState.total) {
-      gameState.score += 5;
+      // match 1세트 완료 = 1문제 배점
+      gameState.score += (gameState.pointEach || 5);
       setTimeout(() => showAnswerOverlay(true, '완벽해요!', '모두 정확하게 연결했습니다 🎉', nextQ), 400);
     }
   } else {
-    // 오답 플래시
     leftBtn.classList.remove('selected-left');
     leftBtn.classList.add('wrong-flash');
     rightBtn.classList.add('wrong-flash');
-    setTimeout(() => { leftBtn.classList.remove('wrong-flash'); rightBtn.classList.remove('wrong-flash'); }, 500);
+    setTimeout(() => {
+      leftBtn.classList.remove('wrong-flash');
+      rightBtn.classList.remove('wrong-flash');
+    }, 500);
   }
   matchState.selectedLeft = null;
 }
@@ -942,13 +962,15 @@ function matchSelectRight(j) {
 function nextQ() { gameState.qIdx++; if(gameState.qIdx < gameState.questions.length) renderQuestion(); else endLevel(); }
 
 function endLevel() {
-  const maxScore = gameState.questions.length * 10;
-  const score = Math.round(gameState.score / maxScore * 100);
-  const passed = score >= 80;
+  // 만점 = 문제수 × 문제당점수 = 항상 100점
+  const maxScore = gameState.questions.length * (gameState.pointEach || 5);
+  const score    = Math.min(100, Math.round(gameState.score / maxScore * 100));
+  const passed   = score >= 80;
   const u = state.users.find(u => u.id === state.currentUserId);
   u.progress[`${gameState.diff}_vl${gameState.level}`] = { passed, score };
-  saveLocal(); showScreen('screen-result');
-  document.getElementById('result-circle').textContent = score + '%';
+  saveLocal();
+  showScreen('screen-result');
+  document.getElementById('result-circle').textContent = score + '점';
   document.getElementById('result-circle').style.background = passed ? 'var(--success)' : 'var(--danger)';
   document.getElementById('res-score').textContent = score;
 }
