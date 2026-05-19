@@ -6,6 +6,7 @@
 <title>WordQuest - 영어단어 학습 게임</title>
 <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap');
@@ -191,15 +192,19 @@
 
   <div id="screen-admin-login" class="screen">
     <div class="card" style="margin-top:50px;">
-      <label>관리자 비밀번호</label>
-      <input type="password" id="admin-pw-input">
+      <h2 style="margin-bottom:20px; text-align:center;">🔐 관리자 로그인</h2>
+      <label style="font-size:12px; color:var(--text2); font-weight:700;">이메일</label>
+      <input type="email" id="admin-email-input" placeholder="관리자 이메일" style="margin-top:4px;">
+      <label style="font-size:12px; color:var(--text2); font-weight:700;">비밀번호</label>
+      <input type="password" id="admin-pw-input" placeholder="비밀번호" style="margin-top:4px;">
+      <div id="admin-login-error" style="color:#ef4444; font-size:13px; margin-bottom:10px; display:none;"></div>
       <button class="btn btn-primary" onclick="checkAdminPw()">로그인</button>
       <button class="btn btn-ghost" onclick="showScreen('screen-splash')">뒤로</button>
     </div>
   </div>
 
   <div id="screen-admin" class="screen">
-    <button onclick="showScreen('screen-splash')" class="btn btn-ghost">관리 모드 종료</button>
+    <button onclick="adminLogout()" class="btn btn-ghost">관리 모드 종료 (로그아웃)</button>
     
     <div class="card">
       <h3 style="margin-bottom:14px;">단어 추가</h3>
@@ -389,7 +394,7 @@
 //  🚨 FIREBASE CONFIG
 // ============================================================
 const firebaseConfig = {
-  apiKey: "--",
+  apiKey: "수정",
   authDomain: "e-word-71f2c.firebaseapp.com",
   projectId: "e-word-71f2c",
   storageBucket: "e-word-71f2c.appspot.com",
@@ -398,17 +403,26 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
+
+// ── 로그인 상태 감지 ──────────────────────────────────────────
+auth.onAuthStateChanged(user => {
+  if (user) {
+    // 로그인 성공 → 어드민 화면으로
+    showScreen('screen-admin');
+  }
+});
 
 const CHARS = [{emoji:'🦊'},{emoji:'🐻'},{emoji:'🐸'},{emoji:'🦁'},{emoji:'🐧'},{emoji:'🦄'},{emoji:'🐳'},{emoji:'🦋'}];
 const DIFFICULTIES = [{id:1,name:'Starter',emoji:'🌱',cls:'diff-d1'},{id:2,name:'Basic',emoji:'📘',cls:'diff-d2'},{id:3,name:'Middle',emoji:'⭐',cls:'diff-d3'},{id:4,name:'Upper',emoji:'🔥',cls:'diff-d4'},{id:5,name:'Advanced',emoji:'💎',cls:'diff-d5'},{id:6,name:'Expert',emoji:'🏆',cls:'diff-d6'}];
 
-let state = { words: [], users: [], currentUserId: null, adminPw: '1234' };
+let state = { words: [], users: [], currentUserId: null };
 let gameState = { diff: 1, level: 1, currentWords: [], questions: [], qIdx: 0, score: 0 };
 let selectedCharIdx = 0;
 
 window.onload = async function() {
   const raw = localStorage.getItem('wq_state');
-  if (raw) { const p = JSON.parse(raw); state.users = p.users || []; state.adminPw = p.adminPw || '1234'; }
+  if (raw) { const p = JSON.parse(raw); state.users = p.users || []; }
   renderCharGrid();
   const snap = await db.collection('words').get();
   state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -886,22 +900,38 @@ function endLevel() {
   document.getElementById('res-score').textContent = score;
 }
 
-// ============================================================
-//  ADMIN LOGIC (PASSWORD & DELETE)
-// ============================================================
-function checkAdminPw() {
-  if(document.getElementById('admin-pw-input').value === state.adminPw) showScreen('screen-admin');
-  else showToast('비밀번호 오류');
+// ── Firebase Auth 기반 어드민 로그인 ──────────────────────────
+async function checkAdminPw() {
+  const email = document.getElementById('admin-email-input').value.trim();
+  const pw = document.getElementById('admin-pw-input').value;
+  const errEl = document.getElementById('admin-login-error');
+  errEl.style.display = 'none';
+  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력하세요.'; errEl.style.display = 'block'; return; }
+  try {
+    await auth.signInWithEmailAndPassword(email, pw);
+    // onAuthStateChanged가 자동으로 screen-admin으로 이동
+  } catch(e) {
+    errEl.textContent = '로그인 실패: 이메일 또는 비밀번호를 확인하세요.';
+    errEl.style.display = 'block';
+  }
 }
 
-// 🟢 비밀번호 변경 함수 복구
-function changeAdminPw() {
+async function adminLogout() {
+  await auth.signOut();
+  showScreen('screen-splash');
+}
+
+// 비밀번호 변경 (Firebase Auth)
+async function changeAdminPw() {
   const newPw = document.getElementById('admin-new-pw').value.trim();
-  if(!newPw) return showToast('새 비밀번호를 입력하세요');
-  state.adminPw = newPw;
-  saveLocal();
-  showToast('비밀번호 변경 완료!');
-  document.getElementById('admin-new-pw').value = '';
+  if (!newPw || newPw.length < 6) return showToast('비밀번호는 6자 이상이어야 합니다.');
+  try {
+    await auth.currentUser.updatePassword(newPw);
+    showToast('✅ 비밀번호 변경 완료!');
+    document.getElementById('admin-new-pw').value = '';
+  } catch(e) {
+    showToast('변경 실패: 다시 로그인 후 시도하세요.');
+  }
 }
 
 async function adminAddWord() {
