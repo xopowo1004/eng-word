@@ -139,6 +139,28 @@
   .fc-dot.seen { background: rgba(245,158,11,0.5); }
   .fc-dot.current { background: var(--accent); transform: scale(1.4); }
 
+
+  /* ── 발음 버튼 ── */
+  .speak-btn { background: none; border: 1.5px solid rgba(255,255,255,0.2); border-radius: 50%; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--accent4); font-size: 16px; transition: all 0.2s; flex-shrink: 0; }
+  .speak-btn:active { transform: scale(0.88); background: rgba(59,130,246,0.2); }
+  .speak-btn.speaking { border-color: var(--accent4); background: rgba(59,130,246,0.2); animation: pulse-ring 0.8s infinite; }
+  .phonetic { font-size: 12px; color: var(--text2); font-style: italic; margin-top: 2px; letter-spacing: 0.5px; }
+  @keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.4)} 50%{box-shadow:0 0 0 6px rgba(59,130,246,0)} }
+
+  /* ── 동기화 상태 배지 ── */
+  .sync-badge { position: fixed; bottom: 16px; right: 16px; background: rgba(16,185,129,0.9); color: white; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 800; z-index: 8000; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+  .sync-badge.show { opacity: 1; }
+  .sync-badge.error { background: rgba(239,68,68,0.9); }
+
+  /* ── PIN 입력 ── */
+  .pin-dots { display: flex; gap: 12px; justify-content: center; margin: 16px 0; }
+  .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: transparent; transition: all 0.2s; }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 8px; }
+  .pin-key { padding: 16px; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.12); color: var(--text); font-size: 22px; font-weight: 800; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .pin-key:active { transform: scale(0.92); background: rgba(255,255,255,0.15); }
+  .pin-key.del { font-size: 16px; color: var(--text2); }
+
 </style>
 </head>
 <body>
@@ -157,6 +179,7 @@
       <h2 style="margin-bottom:20px; text-align:center;">누구신가요?</h2>
       <div id="user-list-container" style="max-height: 250px; overflow-y: auto; margin-bottom:20px;"></div>
       <button class="btn btn-secondary" onclick="showScreen('screen-register')">➕ 새 모험 시작하기</button>
+      <button class="btn btn-ghost" style="font-size:13px;" onclick="showPinLogin()">📱 다른 기기에서 이어하기</button>
       <button class="btn btn-ghost" onclick="showScreen('screen-splash')">뒤로</button>
     </div>
   </div>
@@ -166,7 +189,28 @@
       <h2>캐릭터 생성</h2>
       <input type="text" id="reg-name" placeholder="이름을 입력하세요" maxlength="10">
       <div class="char-grid" id="char-grid"></div>
-      <button class="btn btn-primary" onclick="registerUser()">모험 시작! 🚀</button>
+      <div style="margin-top:16px;">
+        <p style="font-weight:800; margin-bottom:6px; text-align:center;">🔑 PIN 4자리 <span style="font-size:11px;color:var(--text2);">(다른 기기에서 동기화, 선택)</span></p>
+        <div class="pin-dots" id="reg-pin-dots">
+          <div class="pin-dot" id="rpd0"></div><div class="pin-dot" id="rpd1"></div>
+          <div class="pin-dot" id="rpd2"></div><div class="pin-dot" id="rpd3"></div>
+        </div>
+        <div class="pin-pad">
+          <div class="pin-key" onclick="regPinPress('1')">1</div>
+          <div class="pin-key" onclick="regPinPress('2')">2</div>
+          <div class="pin-key" onclick="regPinPress('3')">3</div>
+          <div class="pin-key" onclick="regPinPress('4')">4</div>
+          <div class="pin-key" onclick="regPinPress('5')">5</div>
+          <div class="pin-key" onclick="regPinPress('6')">6</div>
+          <div class="pin-key" onclick="regPinPress('7')">7</div>
+          <div class="pin-key" onclick="regPinPress('8')">8</div>
+          <div class="pin-key" onclick="regPinPress('9')">9</div>
+          <div></div>
+          <div class="pin-key" onclick="regPinPress('0')">0</div>
+          <div class="pin-key del" onclick="regPinPress('del')">⌫</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="registerUser()" style="margin-top:16px;">모험 시작! 🚀</button>
       <button class="btn btn-ghost" onclick="showUserSelectScreen()">취소</button>
     </div>
   </div>
@@ -425,13 +469,14 @@
 </div>
 <div class="toast" id="toast"></div>
 <div class="answer-overlay" id="answer-overlay"></div>
+<div class="sync-badge" id="sync-badge"></div>
 
 <script>
 // ============================================================
 //  🚨 FIREBASE CONFIG
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyAUadgtUacAbgcbjHCwh6XlHFL39A3G84M",
+  apiKey: "AIzaSyDFeb-2833Gpfh8qQdXeWTo2QVAwF1JcLI",
   authDomain: "e-word-71f2c.firebaseapp.com",
   projectId: "e-word-71f2c",
   storageBucket: "e-word-71f2c.appspot.com",
@@ -463,6 +508,21 @@ window.onload = async function() {
   renderCharGrid();
   const snap = await db.collection('words').get();
   state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // 로그인된 유저가 있으면 Firestore에서 최신 progress 동기화
+  if (state.currentUserId) {
+    const u = state.users.find(u => String(u.id) === String(state.currentUserId));
+    if (u && u.pin) {
+      const remote = await loadUserFromFirestore(state.currentUserId);
+      if (remote && remote.updatedAt > (u.updatedAt || 0)) {
+        u.progress = remote.progress || u.progress;
+        u.wordsStudied = remote.wordsStudied || u.wordsStudied;
+        u.updatedAt = remote.updatedAt;
+        saveLocal();
+        showSyncBadge('☁️ 최신 기록으로 업데이트됨');
+      }
+    }
+  }
 };
 
 function showScreen(id) {
@@ -480,9 +540,17 @@ function showUserSelectScreen() {
 }
 function loginUser(id) { state.currentUserId = id; saveLocal(); showScreen('screen-home'); }
 function registerUser() {
-  const name = document.getElementById('reg-name').value.trim(); if (!name) return showToast('이름을 입력하세요!');
-  const user = { id: Date.now(), name, char: selectedCharIdx, progress: {}, wordsStudied: {} };
-  state.users.push(user); saveLocal(); loginUser(user.id);
+  const name = document.getElementById('reg-name').value.trim();
+  if (!name) return showToast('이름을 입력하세요!');
+  const user = { id: Date.now(), name, char: selectedCharIdx, pin: regPin || '', progress: {}, wordsStudied: {} };
+  state.users.push(user);
+  regPin = '';
+  // PIN이 있으면 Firestore에 저장
+  if (user.pin.length === 4) {
+    saveUserToFirestore(user);
+    showToast('✅ 등록 완료! 다른 기기에서 이어할 수 있어요 📱');
+  }
+  saveLocal(); loginUser(user.id);
 }
 function renderCharGrid() { document.getElementById('char-grid').innerHTML = CHARS.map((c, i) => `<div class="char-option ${i===0?'selected':''}" onclick="selectChar(${i}, this)">${c.emoji}</div>`).join(''); }
 function selectChar(i, el) { selectedCharIdx = i; document.querySelectorAll('.char-option').forEach(opt => opt.classList.remove('selected')); el.classList.add('selected'); }
@@ -665,7 +733,10 @@ function drawFlipCard(title) {
             <div class="fc-img-placeholder" id="fc-emoji" style="display:none;">${emoji}</div>
           </div>
           <div class="fc-word">
-            <div class="fc-word-en">${w.en}</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:12px;">
+              <div class="fc-word-en">${w.en}</div>
+              <button class="speak-btn" onclick="event.stopPropagation();speak('${w.en}',this)" title="발음 듣기">🔊</button>
+            </div>
             <div class="fc-hint">탭해서 뜻 확인 👆</div>
           </div>
         </div>
@@ -674,8 +745,11 @@ function drawFlipCard(title) {
           <div class="fc-back-content">
             <div style="font-size:40px; margin-bottom:16px;">✅</div>
             <div class="fc-ko">${w.ko}</div>
-            <div class="fc-en-small">${w.en}</div>
-            <div class="fc-flip-hint">다시 탭하면 앞면으로</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;">
+              <div class="fc-en-small">${w.en}</div>
+              <button class="speak-btn" onclick="event.stopPropagation();speak('${w.en}',this)">🔊</button>
+            </div>
+            <div class="fc-flip-hint" style="margin-top:14px;">다시 탭하면 앞면으로</div>
           </div>
         </div>
       </div>
@@ -857,7 +931,7 @@ function showAnswerOverlay(isCorrect, word, meaning, onNext) {
   ov.innerHTML =
     '<div class="ov-icon">' + (isCorrect ? '🎉' : '❌') + '</div>' +
     '<div class="ov-label">' + (isCorrect ? '정답!' : '오답!') + '</div>' +
-    '<div class="ov-word">' + word.toUpperCase() + '</div>' +
+    '<div class="ov-word" style="display:flex;align-items:center;justify-content:center;gap:12px;">' + word.toUpperCase() + '<button class="speak-btn" onclick="speak(\'' + word + '\',this)" style="width:44px;height:44px;font-size:20px;">🔊</button></div>' +
     '<div class="ov-meaning">' + meaning + '</div>' +
     '<button class="ov-next-btn" onclick="dismissOverlay()">다음 &#9654;</button>';
   void ov.offsetHeight;
@@ -1420,9 +1494,180 @@ async function migrateWordTypes() {
 }
 
 function showToast(m) { const t=document.getElementById('toast'); t.innerHTML=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2500); }
-function saveLocal() { localStorage.setItem('wq_state', JSON.stringify(state)); }
+
+// ════════════════════════════════════════════════════════════
+//  발음 (Web Speech API - 모바일 내장, 무료)
+// ════════════════════════════════════════════════════════════
+let _speaking = false;
+function speak(word, btnEl) {
+  if (!window.speechSynthesis) { showToast('이 브라우저는 발음을 지원하지 않아요'); return; }
+  if (_speaking) { window.speechSynthesis.cancel(); }
+  const utt = new SpeechSynthesisUtterance(word);
+  utt.lang = 'en-US';
+  utt.rate = 0.85;
+  _speaking = true;
+  if (btnEl) btnEl.classList.add('speaking');
+  utt.onend = utt.onerror = () => {
+    _speaking = false;
+    if (btnEl) btnEl.classList.remove('speaking');
+  };
+  window.speechSynthesis.speak(utt);
+}
+
+// ════════════════════════════════════════════════════════════
+//  동기화 배지
+// ════════════════════════════════════════════════════════════
+function showSyncBadge(msg, isError = false) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'sync-badge show' + (isError ? ' error' : '');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ════════════════════════════════════════════════════════════
+//  PIN 등록 (regPin)
+// ════════════════════════════════════════════════════════════
+let regPin = '';
+function regPinPress(key) {
+  if (key === 'del') {
+    regPin = regPin.slice(0, -1);
+  } else if (regPin.length < 4) {
+    regPin += key;
+  }
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('rpd' + i);
+    if (d) d.className = 'pin-dot' + (i < regPin.length ? ' filled' : '');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Firestore 유저 저장/불러오기
+// ════════════════════════════════════════════════════════════
+async function saveUserToFirestore(user) {
+  try {
+    await db.collection('user_progress').doc(String(user.id)).set({
+      name: user.name,
+      char: user.char,
+      pin: user.pin || '',
+      progress: user.progress || {},
+      wordsStudied: user.wordsStudied || {},
+      updatedAt: Date.now()
+    });
+    showSyncBadge('☁️ 저장됨');
+  } catch(e) {
+    showSyncBadge('⚠️ 동기화 실패', true);
+  }
+}
+
+async function loadUserFromFirestore(userId) {
+  try {
+    const doc = await db.collection('user_progress').doc(String(userId)).get();
+    return doc.exists ? doc.data() : null;
+  } catch(e) { return null; }
+}
+
+// PIN으로 유저 찾기 (다른 기기 이어하기)
+async function findUserByNameAndPin(name, pin) {
+  try {
+    const snap = await db.collection('user_progress')
+      .where('name', '==', name)
+      .where('pin', '==', pin)
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    return { id: doc.id, ...doc.data() };
+  } catch(e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════
+//  다른 기기에서 이어하기 (PIN 로그인 팝업)
+// ════════════════════════════════════════════════════════════
+let _pinLoginPin = '';
+function showPinLogin() {
+  _pinLoginPin = '';
+  const overlay = document.createElement('div');
+  overlay.id = 'pin-login-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9500;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:var(--card);border-radius:22px;padding:28px;width:100%;max-width:360px;">
+      <h3 style="text-align:center;margin-bottom:6px;">📱 기기 이어하기</h3>
+      <p style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:16px;">등록한 이름과 PIN을 입력하세요</p>
+      <input type="text" id="pl-name" placeholder="이름" style="margin-bottom:12px;">
+      <p style="font-weight:800;margin-bottom:8px;text-align:center;">PIN 4자리</p>
+      <div class="pin-dots" id="pl-pin-dots">
+        <div class="pin-dot" id="pld0"></div><div class="pin-dot" id="pld1"></div>
+        <div class="pin-dot" id="pld2"></div><div class="pin-dot" id="pld3"></div>
+      </div>
+      <div class="pin-pad" style="margin-top:8px;">
+        <div class="pin-key" onclick="pinLoginPress('1')">1</div>
+        <div class="pin-key" onclick="pinLoginPress('2')">2</div>
+        <div class="pin-key" onclick="pinLoginPress('3')">3</div>
+        <div class="pin-key" onclick="pinLoginPress('4')">4</div>
+        <div class="pin-key" onclick="pinLoginPress('5')">5</div>
+        <div class="pin-key" onclick="pinLoginPress('6')">6</div>
+        <div class="pin-key" onclick="pinLoginPress('7')">7</div>
+        <div class="pin-key" onclick="pinLoginPress('8')">8</div>
+        <div class="pin-key" onclick="pinLoginPress('9')">9</div>
+        <div></div>
+        <div class="pin-key" onclick="pinLoginPress('0')">0</div>
+        <div class="pin-key del" onclick="pinLoginPress('del')">⌫</div>
+      </div>
+      <button class="btn btn-primary" onclick="submitPinLogin()" style="margin-top:16px;">이어하기 →</button>
+      <button class="btn btn-ghost" style="font-size:13px;" onclick="document.getElementById('pin-login-overlay').remove()">취소</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function pinLoginPress(key) {
+  if (key === 'del') {
+    _pinLoginPin = _pinLoginPin.slice(0, -1);
+  } else if (_pinLoginPin.length < 4) {
+    _pinLoginPin += key;
+  }
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('pld' + i);
+    if (d) d.className = 'pin-dot' + (i < _pinLoginPin.length ? ' filled' : '');
+  }
+}
+
+async function submitPinLogin() {
+  const name = (document.getElementById('pl-name')?.value || '').trim();
+  const pin  = _pinLoginPin;
+  if (!name) { showToast('이름을 입력하세요!'); return; }
+  if (pin.length < 4) { showToast('PIN 4자리를 입력하세요!'); return; }
+  showToast('🔍 확인 중...');
+  const remote = await findUserByNameAndPin(name, pin);
+  if (!remote) { showToast('❌ 이름 또는 PIN이 맞지 않아요'); return; }
+
+  // 로컬에 유저 추가/업데이트
+  const uid = remote.id;
+  let user = state.users.find(u => String(u.id) === String(uid));
+  if (!user) {
+    user = { id: uid, name: remote.name, char: remote.char || 0, pin: remote.pin, progress: {}, wordsStudied: {} };
+    state.users.push(user);
+  }
+  // 원격 progress로 덮어쓰기
+  user.progress = remote.progress || {};
+  user.wordsStudied = remote.wordsStudied || {};
+  user.pin = remote.pin;
+  saveLocal();
+  document.getElementById('pin-login-overlay')?.remove();
+  loginUser(uid);
+  showSyncBadge('✅ 이어하기 완료!');
+}
+
+function saveLocal() {
+  localStorage.setItem('wq_state', JSON.stringify(state));
+  // 현재 유저 Firestore 동기화 (PIN 있는 경우)
+  if (state.currentUserId) {
+    const u = state.users.find(u => String(u.id) === String(state.currentUserId));
+    if (u && u.pin) saveUserToFirestore(u);
+  }
+}
 function shuffleArr(arr) { return [...arr].sort(()=>Math.random()-0.5); }
 function confirmQuitGame() { if(confirm('종료할까요?')) showScreen('screen-difficulty'); }
 </script>
 </body>
-</html>
+  </html>
