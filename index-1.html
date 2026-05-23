@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WordQuest - 영어단어 학습 게임</title>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap');
+  :root {
+    --bg: #0f0c29; --bg2: #1a1545; --card: #1e1b4b; --card2: #2d2a6e;
+    --accent: #f59e0b; --accent2: #ec4899; --accent3: #10b981; --accent4: #3b82f6;
+    --text: #f1f5f9; --text2: #94a3b8; --success: #10b981; --danger: #ef4444;
+    --radius: 20px; --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', sans-serif; background: linear-gradient(135deg, var(--bg) 0%, #302b63 50%, #24243e 100%);
+    min-height: 100vh; color: var(--text); overflow-x: hidden;
+  }
+  #app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; min-height: 100vh; padding: 16px; }
+  .screen { display: none; animation: fadeIn 0.4s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
+  .card { background: linear-gradient(145deg, var(--card), var(--card2)); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px; }
+  .btn { display: block; width: 100%; padding: 16px; border: none; border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 18px; font-weight: 800; cursor: pointer; transition: all 0.2s; margin-bottom: 10px; text-align: center; color: white; text-decoration: none; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), #f97316); color: #1a1100; }
+  .btn-secondary { background: linear-gradient(135deg, var(--accent4), #6366f1); }
+  .btn-success { background: var(--success); }
+  .btn-ghost { background: rgba(255,255,255,0.07); color: var(--text2); border: 1px solid rgba(255,255,255,0.1); }
+  .game-title { font-family: 'Fredoka One', cursive; font-size: 52px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 8px; }
+  input, textarea, select { width: 100%; padding: 14px 16px; background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.15); border-radius: 12px; color: var(--text); font-size: 16px; margin-bottom: 12px; outline: none; }
+  .char-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+  .char-option { aspect-ratio: 1; background: rgba(255,255,255,0.05); border: 2.5px solid rgba(255,255,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 28px; }
+  .char-option.selected { border-color: var(--accent); background: rgba(245,158,11,0.2); }
+  .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .diff-card { background: linear-gradient(145deg, var(--card), var(--card2)); border: 2px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 20px 10px; text-align: center; cursor: pointer; position: relative; overflow: hidden; }
+  .diff-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+  .diff-emoji { font-size: 32px; margin-bottom: 5px; }
+  .diff-progress { font-size: 11px; margin-top: 8px; color: var(--accent); font-weight: 700; }
+  .game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .progress-bar-wrap { flex: 1; margin: 0 12px; background: rgba(255,255,255,0.1); border-radius: 100px; height: 8px; }
+  .progress-bar-fill { height: 8px; border-radius: 100px; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: 0.3s; }
+  .question-word { text-align: center; padding: 30px 20px; background: rgba(255,255,255,0.05); border-radius: 20px; margin-bottom: 20px; position: relative; }
+  .q-english { font-family: 'Fredoka One', cursive; font-size: 40px; color: var(--accent); letter-spacing: 2px; }
+  .choice-btn { background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px; color: var(--text); font-weight: 700; cursor: pointer; min-height: 60px; width: 100%; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; line-height: 1.4; }
+  .choice-btn.correct { border-color: var(--success); background: rgba(16,185,129,0.2); }
+  .choice-btn.wrong { border-color: var(--danger); background: rgba(239,68,68,0.2); }
+  .choices-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+  .choices-grid-4 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+  /* Matching game */
+  .match-area { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  .match-col { display: flex; flex-direction: column; gap: 10px; }
+  .match-btn { padding: 14px 10px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: var(--text); font-weight: 700; cursor: pointer; text-align: center; font-size: 14px; transition: all 0.2s; min-height: 56px; display: flex; align-items: center; justify-content: center; }
+  .match-btn.selected-left { border-color: var(--accent); background: rgba(245,158,11,0.25); }
+  .match-btn.selected-right { border-color: var(--accent4); background: rgba(59,130,246,0.25); }
+  .match-btn.matched { border-color: var(--success); background: rgba(16,185,129,0.2); opacity: 0.6; pointer-events: none; }
+  .match-btn.wrong-flash { border-color: var(--danger); background: rgba(239,68,68,0.2); }
+  .game-type-badge { display: inline-block; background: rgba(255,255,255,0.1); border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 800; color: var(--text2); margin-bottom: 10px; letter-spacing: 0.5px; }
+  /* Anagram */
+  .anagram-tiles { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 16px 0; }
+  .anagram-tile { width: 44px; height: 50px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; cursor: pointer; color: var(--accent); font-family: 'Fredoka One', cursive; transition: all 0.15s; }
+  .anagram-tile:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .anagram-tile.used { opacity: 0.2; cursor: default; pointer-events: none; }
+  .anagram-answer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 16px 0; min-height: 56px; }
+  .anagram-slot { width: 44px; height: 50px; border-radius: 10px; border: 2px dashed rgba(255,255,255,0.2); background: rgba(255,255,255,0.03); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; cursor: pointer; color: var(--text); font-family: 'Fredoka One', cursive; transition: all 0.15s; }
+  .anagram-slot.filled { border-color: var(--accent4); background: rgba(59,130,246,0.15); cursor: pointer; }
+  /* Type in */
+  .gap-missing-hint { letter-spacing: 6px; font-size: 14px; color: var(--text2); margin-top: 8px; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #222; border: 1px solid #444; color: white; padding: 15px 25px; border-radius: 15px; z-index: 9999; transition: 0.4s; pointer-events: none; text-align: center; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .study-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05); }
+  .study-en { font-weight: 800; color: var(--accent); font-size: 18px; }
+  .admin-word-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .del-btn { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 11px; font-weight: 800; }
+  .user-item { display: flex; align-items: center; gap: 12px; padding: 14px; background: rgba(255,255,255,0.05); border-radius: 15px; margin-bottom: 10px; cursor: pointer; }
+
+  /* ── 정답/오답 전체화면 오버레이 ── */
+  .answer-overlay { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  .answer-overlay.show { opacity: 1; pointer-events: all; }
+  .answer-overlay.correct-ov { background: rgba(16,185,129,0.97); }
+  .answer-overlay.wrong-ov { background: rgba(239,68,68,0.97); }
+  .ov-icon { font-size: 80px; margin-bottom: 16px; }
+  .ov-label { font-family: 'Fredoka One', cursive; font-size: 44px; color: white; margin-bottom: 12px; }
+  .ov-word { font-size: 30px; font-weight: 900; color: white; margin-bottom: 8px; letter-spacing: 2px; }
+  .ov-meaning { font-size: 20px; color: rgba(255,255,255,0.85); margin-bottom: 32px; text-align: center; }
+  .ov-next-btn { background: white; color: #111; border: none; border-radius: 16px; padding: 16px 48px; font-size: 20px; font-weight: 900; cursor: pointer; font-family: 'Nunito', sans-serif; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  /* ── 빈칸 채우기 타일 ── */
+  .gap-word-display { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 20px 0 8px; }
+  .gap-letter { width: 42px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; font-family: 'Fredoka One', cursive; }
+  .gap-letter.fixed { background: rgba(255,255,255,0.12); color: var(--text); border: 2px solid rgba(255,255,255,0.15); }
+  .gap-letter.blank { background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.3); color: var(--accent); }
+  .gap-letter.blank.filled { background: rgba(59,130,246,0.2); border-color: var(--accent4); }
+  .gap-key-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin: 12px 0; }
+  .gap-key { height: 46px; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.15); color: var(--text); font-size: 18px; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: 'Fredoka One', cursive; transition: all 0.15s; }
+  .gap-key:hover { background: rgba(255,255,255,0.2); transform: translateY(-2px); }
+  .gap-key.used { opacity: 0.25; pointer-events: none; }
+
+  /* ── 플립카드 학습 화면 ── */
+  .fc-screen { display: flex; flex-direction: column; align-items: center; padding: 0 0 20px; }
+  .fc-header { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; }
+  .fc-back-btn { background: none; border: none; color: var(--text2); font-size: 13px; cursor: pointer; padding: 4px 0; display:flex; align-items:center; gap:4px; }
+  .fc-progress-wrap { flex: 1; margin: 0 12px; background: rgba(255,255,255,0.1); border-radius: 100px; height: 6px; }
+  .fc-progress-fill { height: 6px; border-radius: 100px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.4s; }
+  .fc-counter { font-size: 13px; font-weight: 800; color: var(--text2); white-space: nowrap; }
+
+  /* 카드 컨테이너 */
+  .fc-stage { width: 100%; perspective: 1000px; margin-bottom: 18px; }
+  .fc-card-wrap { width: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(.4,0,.2,1); cursor: pointer; border-radius: 22px; }
+  .fc-card-wrap.flipped { transform: rotateY(180deg); }
+  .fc-face { position: absolute; width: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 22px; overflow: hidden; }
+  .fc-front { background: linear-gradient(145deg, var(--card), var(--card2)); border: 1.5px solid rgba(255,255,255,0.1); }
+  .fc-back  { background: linear-gradient(145deg, #1e3a5f, #2d1b69); border: 1.5px solid rgba(59,130,246,0.35); transform: rotateY(180deg); }
+
+  /* 앞면 */
+  .fc-img-wrap { width: 100%; aspect-ratio: 16/9; overflow: hidden; position: relative; background: rgba(0,0,0,0.3); }
+  .fc-img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.4s; }
+  .fc-img-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 64px; background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(236,72,153,0.15)); }
+  .fc-word { padding: 20px 22px 22px; text-align: center; }
+  .fc-word-en { font-family: 'Fredoka One', cursive; font-size: 36px; color: var(--accent); letter-spacing: 1px; margin-bottom: 6px; }
+  .fc-hint { font-size: 13px; color: var(--text2); }
+
+  /* 뒷면 */
+  .fc-back-content { padding: 36px 24px; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .fc-ko { font-size: 32px; font-weight: 900; color: var(--text); margin-bottom: 12px; }
+  .fc-en-small { font-size: 16px; color: rgba(255,255,255,0.5); font-family: 'Fredoka One', cursive; letter-spacing: 1px; }
+  .fc-flip-hint { font-size: 12px; color: rgba(255,255,255,0.3); margin-top: 16px; }
+
+  /* 네비 버튼 */
+  .fc-nav { display: flex; gap: 12px; width: 100%; margin-bottom: 14px; }
+  .fc-nav-btn { flex: 1; padding: 14px; border-radius: 14px; border: 1.5px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: var(--text); font-size: 20px; cursor: pointer; transition: all 0.15s; }
+  .fc-nav-btn:active { transform: scale(0.95); }
+  .fc-nav-btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; font-size: 15px; font-weight: 800; }
+  .fc-dots { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .fc-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.3s; }
+  .fc-dot.seen { background: rgba(245,158,11,0.5); }
+  .fc-dot.current { background: var(--accent); transform: scale(1.4); }
+
+
+  /* ── 발음 버튼 ── */
+  .speak-btn { background: none; border: 1.5px solid rgba(255,255,255,0.2); border-radius: 50%; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--accent4); font-size: 16px; transition: all 0.2s; flex-shrink: 0; }
+  .speak-btn:active { transform: scale(0.88); background: rgba(59,130,246,0.2); }
+  .speak-btn.speaking { border-color: var(--accent4); background: rgba(59,130,246,0.2); animation: pulse-ring 0.8s infinite; }
+  .phonetic { font-size: 12px; color: var(--text2); font-style: italic; margin-top: 2px; letter-spacing: 0.5px; }
+  @keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.4)} 50%{box-shadow:0 0 0 6px rgba(59,130,246,0)} }
+
+  /* ── 동기화 상태 배지 ── */
+  .sync-badge { position: fixed; bottom: 16px; right: 16px; background: rgba(16,185,129,0.9); color: white; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 800; z-index: 8000; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+  .sync-badge.show { opacity: 1; }
+  .sync-badge.error { background: rgba(239,68,68,0.9); }
+
+  /* ── PIN 입력 ── */
+  .pin-dots { display: flex; gap: 12px; justify-content: center; margin: 16px 0; }
+  .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: transparent; transition: all 0.2s; }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-pad { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 8px; }
+  .pin-key { padding: 16px; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.12); color: var(--text); font-size: 22px; font-weight: 800; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .pin-key:active { transform: scale(0.92); background: rgba(255,255,255,0.15); }
+  .pin-key.del { font-size: 16px; color: var(--text2); }
+
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="screen-splash" class="screen active">
+    <div style="padding-top: 80px; text-align: center;">
+      <div class="game-title">WordQuest</div>
+      <div style="font-size: 70px; margin: 30px 0;">🌟</div>
+      <button class="btn btn-primary" onclick="handleStart()">시작하기</button>
+      <button class="btn btn-ghost" onclick="showScreen('screen-admin-login')">⚙️ 관리자</button>
+    </div>
+  </div>
+
+  <div id="screen-user-select" class="screen">
+    <div class="card" style="margin-top:30px;">
+      <h2 style="margin-bottom:20px; text-align:center;">누구신가요?</h2>
+      <div id="user-list-container" style="max-height: 250px; overflow-y: auto; margin-bottom:20px;"></div>
+      <button class="btn btn-secondary" onclick="showScreen('screen-register')">➕ 새 모험 시작하기</button>
+      <button class="btn btn-ghost" style="font-size:13px;" onclick="showPinLogin()">📱 다른 기기에서 이어하기</button>
+      <button class="btn btn-ghost" onclick="showScreen('screen-splash')">뒤로</button>
+    </div>
+  </div>
+
+  <div id="screen-register" class="screen">
+    <div class="card" style="margin-top:20px;">
+      <h2>캐릭터 생성</h2>
+      <input type="text" id="reg-name" placeholder="이름을 입력하세요" maxlength="10">
+      <div class="char-grid" id="char-grid"></div>
+      <div style="margin-top:16px;">
+        <p style="font-weight:800; margin-bottom:6px; text-align:center;">🔑 PIN 4자리 <span style="font-size:11px;color:var(--text2);">(다른 기기에서 동기화, 선택)</span></p>
+        <div class="pin-dots" id="reg-pin-dots">
+          <div class="pin-dot" id="rpd0"></div><div class="pin-dot" id="rpd1"></div>
+          <div class="pin-dot" id="rpd2"></div><div class="pin-dot" id="rpd3"></div>
+        </div>
+        <div class="pin-pad">
+          <div class="pin-key" onclick="regPinPress('1')">1</div>
+          <div class="pin-key" onclick="regPinPress('2')">2</div>
+          <div class="pin-key" onclick="regPinPress('3')">3</div>
+          <div class="pin-key" onclick="regPinPress('4')">4</div>
+          <div class="pin-key" onclick="regPinPress('5')">5</div>
+          <div class="pin-key" onclick="regPinPress('6')">6</div>
+          <div class="pin-key" onclick="regPinPress('7')">7</div>
+          <div class="pin-key" onclick="regPinPress('8')">8</div>
+          <div class="pin-key" onclick="regPinPress('9')">9</div>
+          <div></div>
+          <div class="pin-key" onclick="regPinPress('0')">0</div>
+          <div class="pin-key del" onclick="regPinPress('del')">⌫</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="registerUser()" style="margin-top:16px;">모험 시작! 🚀</button>
+      <button class="btn btn-ghost" onclick="showUserSelectScreen()">취소</button>
+    </div>
+  </div>
+
+  <div id="screen-home" class="screen">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 id="home-welcome"></h2>
+      <div id="home-streak" style="font-weight:900; color:var(--accent);"></div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <span style="font-size:70px;" id="home-char-emoji"></span>
+      <p id="home-char-message" style="margin-top:10px; font-size:14px; color:var(--text2);"></p>
+    </div>
+    <button class="btn btn-primary" onclick="showScreen('screen-difficulty')">📚 학습 시작</button>
+    <button class="btn btn-ghost" onclick="showUserSelectScreen()">🔄 사용자 변경</button>
+  </div>
+
+  <div id="screen-difficulty" class="screen">
+    <div style="margin-bottom:20px; display:flex; align-items:center; gap:15px;">
+      <button onclick="showScreen('screen-home')" style="background:none; border:none; color:white; font-size:24px;">←</button>
+      <h2>난이도 선택</h2>
+    </div>
+    <div class="diff-grid" id="diff-grid"></div>
+  </div>
+
+  <div id="screen-levels" class="screen">
+    <div style="margin-bottom:20px; display:flex; align-items:center; gap:15px;">
+      <button onclick="showScreen('screen-difficulty')" style="background:none; border:none; color:white; font-size:24px;">←</button>
+      <h2 id="level-screen-title"></h2>
+    </div>
+    <div id="level-list" style="padding-bottom: 20px;"></div>
+  </div>
+
+  <div id="screen-study" class="screen">
+    <div class="fc-screen" id="fc-screen">
+      <!-- JS가 renderFlipCards()로 채움 -->
+    </div>
+  </div>
+
+  <div id="screen-game" class="screen">
+    <div class="game-header">
+      <button onclick="confirmQuitGame()" style="background:none; border:none; color:white; font-size:20px;">✕</button>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="game-progress-bar"></div></div>
+      <div style="font-weight:800; color:var(--accent); font-size:14px;">⭐ <span id="game-score">0</span><span style="color:var(--text2); font-size:11px;">/100</span></div>
+    </div>
+    <div id="game-area"></div>
+  </div>
+
+  <div id="screen-result" class="screen">
+    <div style="text-align:center; padding-top:40px;">
+      <div id="result-circle" style="width:100px; height:100px; border-radius:50%; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:900;"></div>
+      <h2 id="result-title"></h2>
+      <div class="card" style="margin-top:20px;">
+        <div style="font-size:18px; font-weight:800; margin-bottom:10px;">최종 점수: <span id="res-score"></span>점</div>
+        <p id="res-status"></p>
+      </div>
+      <button class="btn btn-primary" onclick="showScreen('screen-difficulty')">목록으로</button>
+    </div>
+  </div>
+
+  <div id="screen-admin-login" class="screen">
+    <div class="card" style="margin-top:50px;">
+      <h2 style="margin-bottom:20px; text-align:center;">🔐 관리자 로그인</h2>
+      <label style="font-size:12px; color:var(--text2); font-weight:700;">이메일</label>
+      <input type="email" id="admin-email-input" placeholder="관리자 이메일" style="margin-top:4px;">
+      <label style="font-size:12px; color:var(--text2); font-weight:700;">비밀번호</label>
+      <input type="password" id="admin-pw-input" placeholder="비밀번호" style="margin-top:4px;">
+      <div id="admin-login-error" style="color:#ef4444; font-size:13px; margin-bottom:10px; display:none;"></div>
+      <button class="btn btn-primary" onclick="checkAdminPw()">로그인</button>
+      <button class="btn btn-ghost" onclick="showScreen('screen-splash')">뒤로</button>
+    </div>
+  </div>
+
+  <div id="screen-admin" class="screen">
+    <button onclick="adminLogout()" class="btn btn-ghost">관리 모드 종료 (로그아웃)</button>
+    
+    <div class="card">
+      <h3 style="margin-bottom:14px;">단어 추가</h3>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label style="font-size:12px; color:var(--text2); font-weight:700;">난이도</label>
+          <select id="admin-diff-select" style="margin-top:4px;">
+            <option value="1">1 - Starter 🌱</option>
+            <option value="2">2 - Basic 📘</option>
+            <option value="3">3 - Middle ⭐</option>
+            <option value="4">4 - Upper 🔥</option>
+            <option value="5">5 - Advanced 💎</option>
+            <option value="6">6 - Expert 🏆</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px; color:var(--text2); font-weight:700;">레벨</label>
+          <select id="admin-level-select" style="margin-top:4px;">
+            <option value="1">레벨 1</option>
+            <option value="2">레벨 2</option>
+            <option value="3">레벨 3</option>
+            <option value="4">레벨 4</option>
+            <option value="5">레벨 5</option>
+            <option value="6">레벨 6</option>
+            <option value="7">레벨 7</option>
+            <option value="8">레벨 8</option>
+            <option value="9">레벨 9</option>
+            <option value="10">레벨 10</option>
+            <option value="11">레벨 11</option>
+            <option value="12">레벨 12</option>
+            <option value="13">레벨 13</option>
+            <option value="14">레벨 14</option>
+            <option value="15">레벨 15</option>
+            <option value="16">레벨 16</option>
+            <option value="17">레벨 17</option>
+            <option value="18">레벨 18</option>
+            <option value="19">레벨 19</option>
+            <option value="20">레벨 20</option>
+            <option value="21">레벨 21</option>
+            <option value="22">레벨 22</option>
+            <option value="23">레벨 23</option>
+            <option value="24">레벨 24</option>
+            <option value="25">레벨 25</option>
+            <option value="26">레벨 26</option>
+            <option value="27">레벨 27</option>
+            <option value="28">레벨 28</option>
+            <option value="29">레벨 29</option>
+            <option value="30">레벨 30</option>
+            <option value="31">레벨 31</option>
+            <option value="32">레벨 32</option>
+            <option value="33">레벨 33</option>
+            <option value="34">레벨 34</option>
+            <option value="35">레벨 35</option>
+            <option value="36">레벨 36</option>
+            <option value="37">레벨 37</option>
+            <option value="38">레벨 38</option>
+            <option value="39">레벨 39</option>
+            <option value="40">레벨 40</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px;">
+        <div>
+          <label style="font-size:12px; color:var(--text2); font-weight:700;">영어 단어</label>
+          <input type="text" id="admin-en" placeholder="예: apple" style="margin-top:4px;">
+        </div>
+        <div>
+          <label style="font-size:12px; color:var(--text2); font-weight:700;">한국어 뜻</label>
+          <input type="text" id="admin-ko" placeholder="예: 사과" style="margin-top:4px;">
+        </div>
+      </div>
+      <button class="btn btn-success" onclick="adminAddWord()" style="margin-top:4px;">✅ 단어 추가</button>
+      
+      <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0;">
+      <h4 style="margin-bottom:4px;">📁 CSV 파일 대량 업로드</h4>
+      <p style="font-size:12px; color:var(--text2); margin-bottom:10px;">
+        1920개 이상도 OK! CSV 파일을 선택하면 자동으로 나눠서 업로드합니다.<br>
+        <strong>형식 A (난이도·레벨 포함):</strong> <code style="background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:4px;">영어,한국어뜻,난이도(1-6),레벨(1-10)</code><br>
+        <strong>형식 B (2컬럼):</strong> <code style="background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:4px;">영어,한국어뜻</code> → 위 난이도/레벨 적용
+      </p>
+      <label style="display:flex; align-items:center; justify-content:center; gap:10px; padding:18px; background:rgba(255,255,255,0.05); border:2px dashed rgba(255,255,255,0.2); border-radius:14px; cursor:pointer; margin-bottom:12px;" id="csv-drop-zone">
+        <span style="font-size:28px;">📂</span>
+        <span style="font-weight:700;">CSV 파일 선택 또는 드래그</span>
+        <input type="file" id="csv-file-input" accept=".csv,.txt" style="display:none;" onchange="handleCSVFile(this)">
+      </label>
+      <div id="csv-preview" style="display:none; background:rgba(255,255,255,0.04); border-radius:12px; padding:14px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span id="csv-preview-label" style="font-weight:800; font-size:14px;"></span>
+          <button onclick="clearCSV()" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.3); color:#ef4444; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:11px;">취소</button>
+        </div>
+        <div id="csv-sample" style="font-size:12px; color:var(--text2); max-height:80px; overflow-y:auto;"></div>
+      </div>
+      <div id="upload-progress-wrap" style="display:none; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="font-size:13px; font-weight:700;" id="upload-progress-label">업로드 중...</span>
+          <span style="font-size:13px; font-weight:700; color:var(--accent);" id="upload-progress-pct">0%</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.1); border-radius:100px; height:8px;">
+          <div id="upload-progress-bar" style="height:8px; border-radius:100px; background:linear-gradient(90deg,var(--accent),var(--accent2)); width:0%; transition:0.3s;"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="csv-upload-btn" onclick="startCSVUpload()" style="display:none;">🚀 업로드 시작</button>
+
+      <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0;">
+      <h4 style="margin-bottom:8px;">📋 직접 붙여넣기</h4>
+      <p style="font-size:12px; color:var(--text2); margin-bottom:8px;">형식: <code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">영어,한국어뜻</code> 또는 <code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">영어,한국어뜻,난이도,레벨</code> (한 줄에 하나씩)</p>
+      <textarea id="admin-bulk" placeholder="apple,사과&#10;banana,바나나,2,3&#10;cat,고양이" style="height:90px;"></textarea>
+      <button class="btn btn-secondary" onclick="adminBulkAdd()">📋 일괄 추가</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div id="admin-word-count" style="font-weight:800;"></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="admin-filter-diff" style="padding:6px 10px; font-size:13px; width:auto; margin:0;" onchange="renderAdminWords()">
+            <option value="0">전체 난이도</option>
+            <option value="1">Starter</option><option value="2">Basic</option><option value="3">Middle</option>
+            <option value="4">Upper</option><option value="5">Advanced</option><option value="6">Expert</option>
+          </select>
+          <select id="admin-filter-level" style="padding:6px 10px; font-size:13px; width:auto; margin:0;" onchange="renderAdminWords()">
+            <option value="0">전체 레벨</option>
+            <option value="1">레벨 1</option>
+            <option value="2">레벨 2</option>
+            <option value="3">레벨 3</option>
+            <option value="4">레벨 4</option>
+            <option value="5">레벨 5</option>
+            <option value="6">레벨 6</option>
+            <option value="7">레벨 7</option>
+            <option value="8">레벨 8</option>
+            <option value="9">레벨 9</option>
+            <option value="10">레벨 10</option>
+            <option value="11">레벨 11</option>
+            <option value="12">레벨 12</option>
+            <option value="13">레벨 13</option>
+            <option value="14">레벨 14</option>
+            <option value="15">레벨 15</option>
+            <option value="16">레벨 16</option>
+            <option value="17">레벨 17</option>
+            <option value="18">레벨 18</option>
+            <option value="19">레벨 19</option>
+            <option value="20">레벨 20</option>
+            <option value="21">레벨 21</option>
+            <option value="22">레벨 22</option>
+            <option value="23">레벨 23</option>
+            <option value="24">레벨 24</option>
+            <option value="25">레벨 25</option>
+            <option value="26">레벨 26</option>
+            <option value="27">레벨 27</option>
+            <option value="28">레벨 28</option>
+            <option value="29">레벨 29</option>
+            <option value="30">레벨 30</option>
+            <option value="31">레벨 31</option>
+            <option value="32">레벨 32</option>
+            <option value="33">레벨 33</option>
+            <option value="34">레벨 34</option>
+            <option value="35">레벨 35</option>
+            <option value="36">레벨 36</option>
+            <option value="37">레벨 37</option>
+            <option value="38">레벨 38</option>
+            <option value="39">레벨 39</option>
+            <option value="40">레벨 40</option>
+          </select>
+        </div>
+      </div>
+      <div id="admin-word-list" style="max-height:260px; overflow-y:auto;"></div>
+    </div>
+
+    <div class="card" style="border-color: rgba(245,158,11,0.3);">
+      <h3 style="margin-bottom:6px;">🔧 데이터 정합성 수정</h3>
+      <p style="font-size:12px; color:var(--text2); margin-bottom:12px;">Firestore에 난이도/레벨이 문자열로 저장된 경우 숫자로 일괄 변환합니다. 레벨이 정상 표시되지 않을 때 실행하세요.</p>
+      <div id="migrate-progress" style="display:none; font-size:13px; color:var(--accent); margin-bottom:10px; font-weight:700;"></div>
+      <button class="btn btn-ghost" onclick="migrateWordTypes()" style="margin-bottom:0;">🔄 타입 정규화 실행</button>
+    </div>
+
+    <div class="card">
+      <h3>관리자 비밀번호 변경</h3>
+      <input type="password" id="admin-new-pw" placeholder="새 비밀번호">
+      <button class="btn btn-ghost" onclick="changeAdminPw()">비밀번호 변경</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="answer-overlay" id="answer-overlay"></div>
+<div class="sync-badge" id="sync-badge"></div>
+
+<script>
+// ============================================================
+//  🚨 FIREBASE CONFIG
+// ============================================================
+const firebaseConfig = {
+  apiKey: "수정",
+  authDomain: "e-word-71f2c.firebaseapp.com",
+  projectId: "e-word-71f2c",
+  storageBucket: "e-word-71f2c.appspot.com",
+  messagingSenderId: "22719281578",
+  appId: "1:22719281578:web:4762476dfb8a309690d3d3"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// ── 로그인 상태 감지 ──────────────────────────────────────────
+auth.onAuthStateChanged(user => {
+  if (user) {
+    // 로그인 성공 → 어드민 화면으로
+    showScreen('screen-admin');
+  }
+});
+
+const CHARS = [{emoji:'🦊'},{emoji:'🐻'},{emoji:'🐸'},{emoji:'🦁'},{emoji:'🐧'},{emoji:'🦄'},{emoji:'🐳'},{emoji:'🦋'}];
+const DIFFICULTIES = [{id:1,name:'Starter',emoji:'🌱',cls:'diff-d1'},{id:2,name:'Basic',emoji:'📘',cls:'diff-d2'},{id:3,name:'Middle',emoji:'⭐',cls:'diff-d3'},{id:4,name:'Upper',emoji:'🔥',cls:'diff-d4'},{id:5,name:'Advanced',emoji:'💎',cls:'diff-d5'},{id:6,name:'Expert',emoji:'🏆',cls:'diff-d6'}];
+
+let state = { words: [], users: [], currentUserId: null };
+let gameState = { diff: 1, level: 1, currentWords: [], questions: [], qIdx: 0, score: 0 };
+let selectedCharIdx = 0;
+
+window.onload = async function() {
+  const raw = localStorage.getItem('wq_state');
+  if (raw) { const p = JSON.parse(raw); state.users = p.users || []; }
+  renderCharGrid();
+  const snap = await db.collection('words').get();
+  state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // 로그인된 유저가 있으면 Firestore에서 최신 progress 동기화
+  if (state.currentUserId) {
+    const u = state.users.find(u => String(u.id) === String(state.currentUserId));
+    if (u && u.pin) {
+      const remote = await loadUserFromFirestore(state.currentUserId);
+      if (remote && remote.updatedAt > (u.updatedAt || 0)) {
+        u.progress = remote.progress || u.progress;
+        u.wordsStudied = remote.wordsStudied || u.wordsStudied;
+        u.updatedAt = remote.updatedAt;
+        saveLocal();
+        showSyncBadge('☁️ 최신 기록으로 업데이트됨');
+      }
+    }
+  }
+};
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='screen-home') renderHome();
+  if(id==='screen-difficulty') renderDifficulty();
+  if(id==='screen-admin') renderAdminWords();
+}
+
+function handleStart() { if (state.users.length > 0) showUserSelectScreen(); else showScreen('screen-register'); }
+function showUserSelectScreen() {
+  document.getElementById('user-list-container').innerHTML = state.users.length === 0
+    ? '<p style="text-align:center;color:var(--text2);padding:20px;">등록된 계정이 없습니다</p>'
+    : state.users.map(u => `
+    <div class="user-item" style="cursor:default;">
+      <div style="font-size:24px;" onclick="loginUser(${u.id})" style="cursor:pointer;">${CHARS[u.char].emoji}</div>
+      <div style="flex:1; font-weight:800; cursor:pointer;" onclick="loginUser(${u.id})">${u.name}${u.pin ? ' 🔑' : ''}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="event.stopPropagation();showSetPin(${u.id})"
+          style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:800;cursor:pointer;">
+          ${u.pin ? '🔑 PIN변경' : '🔑 PIN설정'}
+        </button>
+        <button onclick="event.stopPropagation();deleteUser(${u.id},'${u.name}')"
+          style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:800;cursor:pointer;">
+          🗑️
+        </button>
+      </div>
+    </div>`).join('');
+  showScreen('screen-user-select');
+}
+
+// ── 계정 삭제 ────────────────────────────────────────────────
+function deleteUser(id, name) {
+  if (!confirm(`"${name}" 계정을 삭제할까요?\n진행 기록이 모두 사라집니다.`)) return;
+  state.users = state.users.filter(u => u.id !== id);
+  if (state.currentUserId === id) state.currentUserId = null;
+  saveLocal();
+  // Firestore에서도 삭제
+  db.collection('user_progress').doc(String(id)).delete().catch(() => {});
+  showToast('🗑️ 계정이 삭제됐습니다');
+  // 목록 새로고침
+  document.getElementById('user-list-container').innerHTML = state.users.length === 0
+    ? '<p style="text-align:center;color:var(--text2);padding:20px;">등록된 계정이 없습니다</p>'
+    : state.users.map(u => `
+    <div class="user-item" style="cursor:default;">
+      <div style="font-size:24px;" onclick="loginUser(${u.id})">${CHARS[u.char].emoji}</div>
+      <div style="flex:1; font-weight:800; cursor:pointer;" onclick="loginUser(${u.id})">${u.name}${u.pin ? ' 🔑' : ''}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="event.stopPropagation();showSetPin(${u.id})"
+          style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:800;cursor:pointer;">
+          ${u.pin ? '🔑 PIN변경' : '🔑 PIN설정'}
+        </button>
+        <button onclick="event.stopPropagation();deleteUser(${u.id},'${u.name}')"
+          style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:800;cursor:pointer;">
+          🗑️
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+// ── PIN 설정/변경 팝업 ────────────────────────────────────────
+let _setPinUserId = null;
+let _setPinVal = '';
+
+function showSetPin(userId) {
+  _setPinUserId = userId;
+  _setPinVal = '';
+  const u = state.users.find(u => u.id === userId);
+  const overlay = document.createElement('div');
+  overlay.id = 'set-pin-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9500;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:var(--card);border-radius:22px;padding:28px;width:100%;max-width:340px;">
+      <h3 style="text-align:center;margin-bottom:6px;">🔑 PIN ${u.pin ? '변경' : '설정'}</h3>
+      <p style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:16px;">
+        <strong>${u.name}</strong> 계정의 PIN 4자리를 ${u.pin ? '새로 변경' : '설정'}합니다<br>
+        다른 기기에서 이어할 때 사용돼요
+      </p>
+      <div class="pin-dots" id="sp-dots">
+        <div class="pin-dot" id="spd0"></div>
+        <div class="pin-dot" id="spd1"></div>
+        <div class="pin-dot" id="spd2"></div>
+        <div class="pin-dot" id="spd3"></div>
+      </div>
+      <div class="pin-pad" style="margin-top:12px;">
+        <div class="pin-key" onclick="setPinPress('1')">1</div>
+        <div class="pin-key" onclick="setPinPress('2')">2</div>
+        <div class="pin-key" onclick="setPinPress('3')">3</div>
+        <div class="pin-key" onclick="setPinPress('4')">4</div>
+        <div class="pin-key" onclick="setPinPress('5')">5</div>
+        <div class="pin-key" onclick="setPinPress('6')">6</div>
+        <div class="pin-key" onclick="setPinPress('7')">7</div>
+        <div class="pin-key" onclick="setPinPress('8')">8</div>
+        <div class="pin-key" onclick="setPinPress('9')">9</div>
+        <div></div>
+        <div class="pin-key" onclick="setPinPress('0')">0</div>
+        <div class="pin-key del" onclick="setPinPress('del')">⌫</div>
+      </div>
+      <button class="btn btn-ghost" style="font-size:13px;margin-top:12px;"
+        onclick="document.getElementById('set-pin-overlay').remove()">취소</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function setPinPress(key) {
+  if (key === 'del') {
+    _setPinVal = _setPinVal.slice(0, -1);
+  } else if (_setPinVal.length < 4) {
+    _setPinVal += key;
+  }
+  // 점 업데이트
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('spd' + i);
+    if (d) d.className = 'pin-dot' + (i < _setPinVal.length ? ' filled' : '');
+  }
+  // 4자리 완성되면 자동 저장
+  if (_setPinVal.length === 4) {
+    setTimeout(() => submitSetPin(), 300);
+  }
+}
+
+function submitSetPin() {
+  const u = state.users.find(u => u.id === _setPinUserId);
+  if (!u) return;
+  u.pin = _setPinVal;
+  saveLocal();
+  saveUserToFirestore(u);
+  document.getElementById('set-pin-overlay')?.remove();
+  showToast('✅ PIN이 설정됐습니다! 다른 기기에서 이어할 수 있어요 📱');
+  showSyncBadge('🔑 PIN 저장됨');
+  // 목록 새로고침 (PIN 뱃지 반영)
+  deleteUser._refresh && deleteUser._refresh();
+}
+
+function loginUser(id) { state.currentUserId = id; saveLocal(); showScreen('screen-home'); }
+function registerUser() {
+  const name = document.getElementById('reg-name').value.trim();
+  if (!name) return showToast('이름을 입력하세요!');
+  const user = { id: Date.now(), name, char: selectedCharIdx, pin: regPin || '', progress: {}, wordsStudied: {} };
+  state.users.push(user);
+  regPin = '';
+  // PIN이 있으면 Firestore에 저장
+  if (user.pin.length === 4) {
+    saveUserToFirestore(user);
+    showToast('✅ 등록 완료! 다른 기기에서 이어할 수 있어요 📱');
+  }
+  saveLocal(); loginUser(user.id);
+}
+function renderCharGrid() { document.getElementById('char-grid').innerHTML = CHARS.map((c, i) => `<div class="char-option ${i===0?'selected':''}" onclick="selectChar(${i}, this)">${c.emoji}</div>`).join(''); }
+function selectChar(i, el) { selectedCharIdx = i; document.querySelectorAll('.char-option').forEach(opt => opt.classList.remove('selected')); el.classList.add('selected'); }
+function renderHome() {
+  const u = state.users.find(u => u.id === state.currentUserId);
+  document.getElementById('home-welcome').textContent = `안녕, ${u.name}!`;
+  document.getElementById('home-char-emoji').textContent = CHARS[u.char].emoji;
+}
+function renderDifficulty() {
+  document.getElementById('diff-grid').innerHTML = DIFFICULTIES.map(d => `<div class="diff-card ${d.cls}" onclick="selectDiff(${d.id})"><div class="diff-emoji">${d.emoji}</div><div class="diff-name">${d.name}</div></div>`).join('');
+}
+function selectDiff(id) { gameState.diff = id; renderLevels(id); showScreen('screen-levels'); }
+
+// ────────────────────────────────────────────────────────────
+//  레벨 매핑: 가상레벨(VL, 화면표시 1~40) ↔ 실제레벨(RL, Firestore 1~32)
+//
+//  구조: 4개 신규레벨 + 1개 복습레벨 = 5레벨 단위 반복 (8회 = 40레벨)
+//  VL1~4  → RL1~4 (신규 단어 10개씩)
+//  VL5    → 복습: RL1,2,3,4 단어 합산 (최대 40개)
+//  VL6~9  → RL5~8
+//  VL10   → 복습: RL5,6,7,8
+//  ...
+//  VL36~39→ RL29~32
+//  VL40   → 복습: RL29,30,31,32
+// ────────────────────────────────────────────────────────────
+function isReviewLevel(vl) {
+  return Number(vl) % 5 === 0;
+}
+
+// 가상레벨 → 실제레벨 (복습이면 null)
+function virtualToReal(vl) {
+  vl = Number(vl);
+  if (isReviewLevel(vl)) return null;
+  // 앞에 삽입된 복습레벨 수만큼 빼줌
+  return vl - Math.floor(vl / 5);
+}
+
+// 복습레벨에 해당하는 실제레벨 배열 반환
+// VL5→[1,2,3,4]  VL10→[5,6,7,8]  VL40→[29,30,31,32]
+function getReviewRealLevels(vl) {
+  vl = Number(vl);
+  const group = vl / 5;                    // 몇 번째 복습 (1,2,...8)
+  const startRL = (group - 1) * 4 + 1;    // 해당 그룹 첫 실제레벨
+  return [startRL, startRL+1, startRL+2, startRL+3];
+}
+
+// 해당 가상레벨의 단어 가져오기
+function getWordsForVL(diffId, vl) {
+  vl = Number(vl);
+  diffId = Number(diffId);
+  if (isReviewLevel(vl)) {
+    // 복습: 앞 4개 실제레벨 단어 모두 합산
+    const rls = getReviewRealLevels(vl);
+    return state.words.filter(w =>
+      Number(w.diff) === diffId && rls.includes(Number(w.level))
+    );
+  } else {
+    const rl = virtualToReal(vl);
+    return state.words.filter(w =>
+      Number(w.diff) === diffId && Number(w.level) === rl
+    );
+  }
+}
+function renderLevels(diffId) {
+  const u = state.users.find(u => u.id === state.currentUserId);
+  let html = '';
+
+  // 항상 가상레벨 1~40을 표시
+  for (let vl = 1; vl <= 40; vl++) {
+    const wordsInLevel = getWordsForVL(diffId, vl);
+    const isReview = isReviewLevel(vl);
+    const progKey = `${diffId}_vl${vl}`;
+    const prog = (u.progress || {})[progKey] || {};
+
+    // 잠금: 첫 레벨 제외, 이전 가상레벨 통과해야 열림
+    const prevKey = `${diffId}_vl${vl - 1}`;
+    const locked = vl > 1 && !((u.progress || {})[prevKey]?.passed);
+
+    const lockIcon = locked ? '🔒 ' : (isReview ? '🔄 ' : '');
+    const statusHtml = prog.passed
+      ? '<span style="color:var(--success); font-weight:800; font-size:13px;">✅ 통과</span>'
+      : (prog.score != null && prog.score !== '')
+        ? `<span style="color:var(--accent); font-size:13px;">${prog.score}점</span>`
+        : (isReview ? '<span style="font-size:11px; color:var(--accent2); font-weight:700;">복습</span>' : '');
+
+    const subLabel = isReview
+      ? `앞 4레벨 복습 · ${wordsInLevel.length}단어`
+      : `신규 단어 ${wordsInLevel.length}개`;
+
+    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px;
+      background:rgba(255,255,255,${locked ? 0.02 : isReview ? 0.1 : 0.06}); border-radius:14px; margin-bottom:8px;
+      border:1.5px solid rgba(255,255,255,${locked ? 0.05 : isReview ? 0.3 : 0.12}); opacity:${locked ? 0.4 : 1};
+      cursor:${locked ? 'not-allowed' : 'pointer'};"
+      onclick="${locked ? '' : `enterStudy(${diffId},${vl})`}">
+      <div>
+        <div style="font-weight:800; font-size:15px; color:${isReview ? 'var(--accent2)' : 'var(--text)'};">${lockIcon}레벨 ${vl}${isReview ? ' · 복습' : ''}</div>
+        <div style="font-size:12px; color:var(--text2); margin-top:2px;">${subLabel}</div>
+      </div>
+      <div>${statusHtml}</div>
+    </div>`;
+  }
+  document.getElementById('level-list').innerHTML = html;
+}
+
+function enterStudy(diff, vl) {
+  vl = Number(vl);
+  const words = getWordsForVL(diff, vl);
+  words.sort((a, b) => a.en.localeCompare(b.en));
+  gameState.currentWords = words;
+  gameState.diff = Number(diff);
+  gameState.level = vl;
+  showScreen('screen-study');
+  renderFlipCards(words, vl);
+}
+
+// ════════════════════════════════════════════════════════════
+//  플립카드 학습 시스템
+// ════════════════════════════════════════════════════════════
+let fcState = { words: [], idx: 0, seen: new Set() };
+
+// Unsplash 이미지 (단어 검색, 실패 시 이모지 대체)
+const WORD_EMOJIS = {
+  // 기본 카테고리 이모지 (이미지 로드 실패 시 폴백)
+  default: ['📖','🌟','💡','🎯','✨','🔤','📝','🎓','💎','🚀']
+};
+
+function getUnsplashUrl(word) {
+  // Unsplash Source API (무료, API키 불필요)
+  return `https://source.unsplash.com/400x225/?${encodeURIComponent(word)}&sig=${Math.floor(Math.random()*1000)}`;
+}
+
+function renderFlipCards(words, vl) {
+  fcState = { words, idx: 0, seen: new Set() };
+  const isReview = isReviewLevel(vl);
+  const title = isReview
+    ? `레벨 ${vl} · 복습 (${words.length}단어)`
+    : `레벨 ${vl} · 단어 ${words.length}개`;
+  drawFlipCard(title);
+}
+
+function drawFlipCard(title) {
+  const { words, idx, seen } = fcState;
+  const w = words[idx];
+  const total = words.length;
+  const pct = Math.round((idx) / total * 100);
+  const allSeen = seen.size >= total;
+
+  // 점 표시
+  const dots = words.map((_, i) => {
+    let cls = 'fc-dot';
+    if (i === idx) cls += ' current';
+    else if (seen.has(i)) cls += ' seen';
+    return `<div class="${cls}"></div>`;
+  }).join('');
+
+  // 카드 높이를 위해 spacer (앞면 기준)
+  const imgUrl = getUnsplashUrl(w.en);
+  const emoji  = WORD_EMOJIS.default[idx % WORD_EMOJIS.default.length];
+
+  const html = `
+    <div class="fc-header">
+      <button class="fc-back-btn" onclick="showScreen('screen-levels')">← 뒤로</button>
+      <div class="fc-progress-wrap"><div class="fc-progress-fill" style="width:${pct}%"></div></div>
+      <span class="fc-counter">${idx+1} / ${total}</span>
+    </div>
+
+    <p style="font-size:12px; color:var(--text2); margin-bottom:12px; text-align:center;">
+      카드를 탭하면 뒤집힙니다
+    </p>
+
+    <div class="fc-stage">
+      <div class="fc-card-wrap" id="fc-card" onclick="flipCard()" style="min-height:280px;">
+        <!-- 앞면 -->
+        <div class="fc-face fc-front" style="min-height:280px;">
+          <div class="fc-img-wrap">
+            <img class="fc-img" id="fc-img" src="${imgUrl}"
+              onerror="this.style.display='none'; document.getElementById('fc-emoji').style.display='flex';"
+              onload="document.getElementById('fc-emoji').style.display='none';"
+              alt="${w.en}">
+            <div class="fc-img-placeholder" id="fc-emoji" style="display:none;">${emoji}</div>
+          </div>
+          <div class="fc-word">
+            <div style="display:flex;align-items:center;justify-content:center;gap:12px;">
+              <div class="fc-word-en">${w.en}</div>
+              <button class="speak-btn" onclick="event.stopPropagation();speak('${w.en}',this)" title="발음 듣기">🔊</button>
+            </div>
+            <div class="fc-hint">탭해서 뜻 확인 👆</div>
+          </div>
+        </div>
+        <!-- 뒷면 -->
+        <div class="fc-face fc-back" style="min-height:280px;">
+          <div class="fc-back-content">
+            <div style="font-size:40px; margin-bottom:16px;">✅</div>
+            <div class="fc-ko">${w.ko}</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;">
+              <div class="fc-en-small">${w.en}</div>
+              <button class="speak-btn" onclick="event.stopPropagation();speak('${w.en}',this)">🔊</button>
+            </div>
+            <div class="fc-flip-hint" style="margin-top:14px;">다시 탭하면 앞면으로</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc-dots">${dots}</div>
+
+    <div class="fc-nav">
+      <button class="fc-nav-btn" onclick="fcMove(-1)" ${idx === 0 ? 'style="opacity:0.3;pointer-events:none;"' : ''}>←</button>
+      <button class="fc-nav-btn" onclick="fcMove(1)" ${idx === total-1 ? 'style="opacity:0.3;pointer-events:none;"' : ''}>→</button>
+    </div>
+
+    ${allSeen ? `
+    <button class="btn btn-primary" onclick="launchGame()" style="margin-top:4px;">
+      잘 외웠는지 확인해보자 🎮
+    </button>` : `
+    <button class="btn btn-ghost" style="font-size:13px; padding:10px;" onclick="launchGame()">
+      바로 게임 시작하기 →
+    </button>`}
+  `;
+
+  document.getElementById('fc-screen').innerHTML = html;
+
+  // 터치 스와이프 지원
+  let touchStartX = 0;
+  const card = document.getElementById('fc-card');
+  if (card) {
+    card.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    card.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(dx) > 50) {
+        // 뒤집혀 있으면 먼저 원상복구 후 이동
+        if (card.classList.contains('flipped')) {
+          card.classList.remove('flipped');
+          setTimeout(() => fcMove(dx < 0 ? 1 : -1), 300);
+        } else {
+          fcMove(dx < 0 ? 1 : -1);
+        }
+      }
+    }, { passive: true });
+  }
+}
+
+function flipCard() {
+  const card = document.getElementById('fc-card');
+  if (!card) return;
+  card.classList.toggle('flipped');
+  // 뒤집어서 뜻을 본 경우 → seen 처리
+  if (card.classList.contains('flipped')) {
+    fcState.seen.add(fcState.idx);
+  }
+}
+
+function fcMove(dir) {
+  const { words } = fcState;
+  const next = fcState.idx + dir;
+  if (next < 0 || next >= words.length) return;
+  // 카드 뒤집혀 있으면 원상복구
+  const card = document.getElementById('fc-card');
+  if (card && card.classList.contains('flipped')) {
+    card.classList.remove('flipped');
+    setTimeout(() => { fcState.idx = next; drawFlipCard(); }, 280);
+  } else {
+    fcState.idx = next;
+    drawFlipCard();
+  }
+}
+
+
+
+
+// ============================================================
+//  GAME TYPES:
+//  mc       - 영어 보고 뜻 고르기 (4지선다)
+//  mc_en    - 한글 보고 영어 고르기 (4지선다)
+//  gap      - 빠진 철자 입력 (빠진 것만 입력)
+//  anagram  - 철자 순서 맞추기
+//  match    - 단어-뜻 짝 맞추기 (3쌍)
+// ============================================================
+
+// 매칭 게임 상태
+let matchState = { selectedLeft: null, matched: 0, pairs: [], total: 0 };
+
+function launchGame() {
+  const allInDiff = state.words.filter(w => Number(w.diff) === Number(gameState.diff));
+  const isRevLv = isReviewLevel(gameState.level);
+
+  // 문제 수 & 배점 고정
+  const TOTAL_Q  = isRevLv ? 25 : 20;   // 총 문제 수
+  const PT_EACH  = isRevLv ? 4  : 5;    // 문제당 점수 (합계 = 100점)
+
+  gameState.pointEach = PT_EACH;         // endLevel에서 참조
+
+  // 사용할 단어 풀 (일반: 최대 10개 단어, 복습: 전체)
+  const wordPool = shuffleArr(gameState.currentWords)
+    .slice(0, isRevLv ? gameState.currentWords.length : Math.min(10, gameState.currentWords.length));
+
+  // 게임 유형 배분 (match는 3단어 묶음 1문제)
+  // 일반: mc5 mc_en5 gap4 anagram4 match2  → 20문제
+  // 복습: mc6 mc_en6 gap5 anagram5 match3  → 25문제
+  const typePlan = isRevLv
+    ? ['mc','mc','mc','mc','mc','mc',
+       'mc_en','mc_en','mc_en','mc_en','mc_en','mc_en',
+       'gap','gap','gap','gap','gap',
+       'anagram','anagram','anagram','anagram','anagram',
+       'match','match','match']
+    : ['mc','mc','mc','mc','mc',
+       'mc_en','mc_en','mc_en','mc_en','mc_en',
+       'gap','gap','gap','gap',
+       'anagram','anagram','anagram','anagram',
+       'match','match'];
+
+  const types = shuffleArr([...typePlan]);
+
+  const questions = [];
+  let matchBuf   = [];
+  let wordIdx    = 0;
+
+  const nextWord = () => {
+    const w = wordPool[wordIdx % wordPool.length];
+    wordIdx++;
+    return w;
+  };
+
+  for (const type of types) {
+    if (type === 'match') {
+      // 3단어 모이면 match 1문제 생성
+      matchBuf.push(nextWord());
+      if (matchBuf.length === 3) {
+        // 중복 제거
+        const uniq = [...new Map(matchBuf.map(w => [w.id, w])).values()];
+        if (uniq.length === 3) {
+          questions.push({ type: 'match', pairs: uniq });
+        } else {
+          // 중복 있으면 mc로 대체
+          const w = uniq[0];
+          const dist = shuffleArr(allInDiff.filter(x => x.id !== w.id)).slice(0, 3);
+          questions.push({ type: 'mc', word: w, distractors: dist });
+        }
+        matchBuf = [];
+      }
+    } else {
+      const word = nextWord();
+      const distractors = shuffleArr(allInDiff.filter(x => x.id !== word.id)).slice(0, 3);
+      questions.push({ type, word, distractors });
+    }
+  }
+
+  // matchBuf 잔여 처리 (mc로 대체)
+  for (const w of matchBuf) {
+    const dist = shuffleArr(allInDiff.filter(x => x.id !== w.id)).slice(0, 3);
+    questions.push({ type: 'mc', word: w, distractors: dist });
+  }
+
+  gameState.questions = questions.slice(0, TOTAL_Q);
+  gameState.qIdx  = 0;
+  gameState.score = 0;
+  showScreen('screen-game');
+  renderQuestion();
+}
+
+function renderQuestion() {
+  const q = gameState.questions[gameState.qIdx];
+  if(!q) { endLevel(); return; }
+  document.getElementById('game-progress-bar').style.width = (gameState.qIdx / gameState.questions.length * 100)+'%';
+  document.getElementById('game-score').textContent = gameState.score;
+  const area = document.getElementById('game-area');
+  if (q.type === 'gap') renderGapFill(area, q);
+  else if (q.type === 'anagram') renderAnagram(area, q);
+  else if (q.type === 'match') renderMatch(area, q);
+  else renderMC(area, q);
+}
+
+
+// ── 정답/오답 전체화면 오버레이 ─────────────────────────────
+function showAnswerOverlay(isCorrect, word, meaning, onNext) {
+  const ov = document.getElementById('answer-overlay');
+  ov.className = 'answer-overlay ' + (isCorrect ? 'correct-ov' : 'wrong-ov');
+  ov.innerHTML =
+    '<div class="ov-icon">' + (isCorrect ? '🎉' : '❌') + '</div>' +
+    '<div class="ov-label">' + (isCorrect ? '정답!' : '오답!') + '</div>' +
+    '<div class="ov-word" style="display:flex;align-items:center;justify-content:center;gap:12px;">' + word.toUpperCase() + '<button class="speak-btn" onclick="speak(\'' + word + '\',this)" style="width:44px;height:44px;font-size:20px;">🔊</button></div>' +
+    '<div class="ov-meaning">' + meaning + '</div>' +
+    '<button class="ov-next-btn" onclick="dismissOverlay()">다음 &#9654;</button>';
+  void ov.offsetHeight;
+  ov.classList.add('show');
+  window._overlayNext = onNext;
+}
+
+function dismissOverlay() {
+  const ov = document.getElementById('answer-overlay');
+  ov.classList.remove('show');
+  setTimeout(function() {
+    ov.className = 'answer-overlay';
+    if(window._overlayNext) window._overlayNext();
+  }, 200);
+}
+
+// ── 1. 뜻 고르기 / 영어 고르기 ──────────────────────────────
+function renderMC(area, q) {
+  const isKoQ = q.type === 'mc'; // 영어 보여주고 뜻 고르기
+  const choices = shuffleArr([q.word, ...q.distractors]);
+  const badge = isKoQ ? '🔤 뜻을 고르세요' : '🇰🇷 영어를 고르세요';
+  area.innerHTML = `
+    <div class="game-type-badge">${badge}</div>
+    <div class="question-word">
+      <div class="q-english" style="font-size:${isKoQ?'38px':'28px'};">${isKoQ ? q.word.en : q.word.ko}</div>
+    </div>
+    <div class="choices-grid">
+      ${choices.map((c,i)=>`<button class="choice-btn" id="c-${i}" data-id="${c.id}" onclick="checkMC(${i},'${c.id}','${q.word.id}','${q.word.en}','${q.word.ko}')">${isKoQ ? c.ko : c.en}</button>`).join('')}
+    </div>`;
+}
+
+function checkMC(idx, cid, qid, wordEn, wordKo) {
+  const isCorrect = cid === qid;
+  // 모든 버튼 비활성화
+  document.querySelectorAll('.choice-btn').forEach(b => b.style.pointerEvents = 'none');
+  document.getElementById('c-'+idx).classList.add(isCorrect ? 'correct' : 'wrong');
+  if(!isCorrect) {
+    // 정답 버튼도 초록으로 표시
+    document.querySelectorAll('.choice-btn').forEach((b, i) => {
+      if(b.getAttribute('data-id') === qid) b.classList.add('correct');
+    });
+  }
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
+  setTimeout(() => showAnswerOverlay(isCorrect, wordEn, wordKo, nextQ), 400);
+}
+
+// ── 2. 빠진 철자 입력 (타일 클릭 방식) ──────────────────────
+let gapState = { indices: [], filled: [], word: '' };
+
+function renderGapFill(area, q) {
+  const en = q.word.en;
+  let indices = [];
+  const count = Math.max(1, Math.floor(en.length * 0.4));
+  while(indices.length < count) {
+    let r = Math.floor(Math.random() * en.length);
+    if(!indices.includes(r)) indices.push(r);
+  }
+  indices.sort((a,b) => a-b);
+  gapState = { indices, filled: Array(indices.length).fill(null), word: en };
+
+  // 셔플된 빠진 철자 키 목록
+  const missingLetters = indices.map(i => en[i].toUpperCase());
+  const keyLetters = [...missingLetters].sort(() => Math.random() - 0.5);
+
+  area.innerHTML = `
+    <div class="game-type-badge">✏️ 빠진 철자를 채우세요</div>
+    <div class="question-word">
+      <p>뜻: <strong>${q.word.ko}</strong></p>
+    </div>
+    <div class="gap-word-display" id="gap-display"></div>
+    <div class="gap-key-grid" id="gap-keys">
+      ${keyLetters.map((l,i) => `<div class="gap-key" id="gk-${i}" onclick="gapKeyPress('${l}',${i})">${l}</div>`).join('')}
+    </div>
+    <button class="btn btn-ghost" style="font-size:14px;margin-top:8px;" onclick="gapSkip('${en}')">⏭ 건너뛰기</button>`;
+
+  renderGapDisplay();
+}
+
+function renderGapDisplay() {
+  const en = gapState.word;
+  const { indices, filled } = gapState;
+  let blankIdx = 0;
+  const tiles = en.split('').map((ch, i) => {
+    if(!indices.includes(i)) {
+      return `<div class="gap-letter fixed">${ch.toUpperCase()}</div>`;
+    } else {
+      const val = filled[blankIdx];
+      const tile = `<div class="gap-letter blank ${val ? 'filled' : ''}" onclick="gapRemove(${blankIdx})">${val || ''}</div>`;
+      blankIdx++;
+      return tile;
+    }
+  });
+  document.getElementById('gap-display').innerHTML = tiles.join('');
+}
+
+function gapKeyPress(letter, keyIdx) {
+  const nextEmpty = gapState.filled.indexOf(null);
+  if(nextEmpty === -1) return; // 다 찼으면 무시
+  gapState.filled[nextEmpty] = letter;
+  document.getElementById('gk-'+keyIdx).classList.add('used');
+  renderGapDisplay();
+  // 다 채웠으면 자동 체크
+  if(gapState.filled.indexOf(null) === -1) setTimeout(() => checkGapTile(), 300);
+}
+
+function gapRemove(blankIdx) {
+  const letter = gapState.filled[blankIdx];
+  if(!letter) return;
+  gapState.filled[blankIdx] = null;
+  // 해당 키 다시 활성화
+  const keys = document.querySelectorAll('.gap-key');
+  for(let k of keys) {
+    if(k.textContent === letter && k.classList.contains('used')) {
+      k.classList.remove('used');
+      break;
+    }
+  }
+  renderGapDisplay();
+}
+
+function checkGapTile() {
+  const en = gapState.word;
+  const { indices, filled } = gapState;
+  const correct = indices.map(i => en[i].toUpperCase());
+  const isCorrect = filled.every((v, i) => v === correct[i]);
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
+  showAnswerOverlay(isCorrect, en, document.querySelector('.question-word strong')?.textContent || '', nextQ);
+}
+
+function gapSkip(en) {
+  showAnswerOverlay(false, en, document.querySelector('.question-word strong')?.textContent || '', nextQ);
+}
+
+// (구버전 호환용 - 실제로는 사용 안함)
+function checkGap(correct, indices, skip=false) {
+  if(skip) { showAnswerOverlay(false, correct, '', nextQ); return; }
+  checkGapTile();
+}
+
+
+function checkGap(correct, indices, skip=false) {
+  if(skip) { showToast(`정답: ${correct.toUpperCase()}`); nextQ(); return; }
+  const val = document.getElementById('gap-input').value.trim().toLowerCase();
+  // 빠진 철자들만 순서대로 추출
+  const missingLetters = indices.map(i => correct[i]).join('').toLowerCase();
+  // 전체 단어 입력도 허용, 빠진 것만 입력도 허용
+  if(val === correct.toLowerCase() || val === missingLetters) {
+    showToast("정답! 🎉"); gameState.score += 10;
+  } else {
+    showToast(`❌ 정답: ${missingLetters.toUpperCase()} (빠진 철자)`);
+  }
+  nextQ();
+}
+
+// ── 3. 철자 순서 맞추기 (애너그램) ─────────────────────────
+let anagramState = { tiles: [], answer: [], word: '' };
+
+function renderAnagram(area, q) {
+  const en = q.word.en;
+  const shuffled = shuffleArr(en.split(''));
+  anagramState = { tiles: shuffled.map((l,i)=>({letter:l, idx:i, used:false})), answer: [], word: en };
+  
+  area.innerHTML = `
+    <div class="game-type-badge">🔀 철자 순서를 맞추세요</div>
+    <div class="question-word">
+      <p>뜻: <strong>${q.word.ko}</strong></p>
+      <p style="font-size:13px; color:var(--text2); margin-top:6px;">${en.length}글자</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04); border-radius:16px; padding:16px; margin-bottom:12px;">
+      <p style="font-size:12px; color:var(--text2); margin-bottom:10px; text-align:center;">내 답안 (클릭하면 취소)</p>
+      <div class="anagram-answer" id="anagram-answer"></div>
+    </div>
+    <div class="anagram-tiles" id="anagram-tiles"></div>
+    <button class="btn btn-primary" onclick="submitAnagram('${en}')">확인</button>
+    <button class="btn btn-ghost" style="font-size:14px;" onclick="submitAnagram('${en}', true)">⏭ 건너뛰기</button>`;
+  
+  renderAnagramTiles();
+}
+
+function renderAnagramTiles() {
+  const tileEl = document.getElementById('anagram-tiles');
+  const ansEl = document.getElementById('anagram-answer');
+  if(!tileEl || !ansEl) return;
+  tileEl.innerHTML = anagramState.tiles.map((t, i) =>
+    `<div class="anagram-tile ${t.used?'used':''}" onclick="anagramPick(${i})">${t.letter.toUpperCase()}</div>`
+  ).join('');
+  ansEl.innerHTML = anagramState.answer.map((a, i) =>
+    `<div class="anagram-slot filled" onclick="anagramRemove(${i})">${a.letter.toUpperCase()}</div>`
+  ).join('') + (anagramState.answer.length < anagramState.word.length ? `<div class="anagram-slot"></div>` : '');
+}
+
+function anagramPick(i) {
+  if(anagramState.tiles[i].used) return;
+  anagramState.tiles[i].used = true;
+  anagramState.answer.push({...anagramState.tiles[i], tileIdx: i});
+  renderAnagramTiles();
+  if(anagramState.answer.length === anagramState.word.length) setTimeout(() => submitAnagram(anagramState.word), 300);
+}
+
+function anagramRemove(i) {
+  const removed = anagramState.answer.splice(i, 1)[0];
+  anagramState.tiles[removed.tileIdx].used = false;
+  renderAnagramTiles();
+}
+
+function submitAnagram(correct, skip=false) {
+  const meaning = document.querySelector('.question-word strong')?.textContent || '';
+  if(skip) { showAnswerOverlay(false, correct, meaning, nextQ); return; }
+  const typed = anagramState.answer.map(a => a.letter).join('').toLowerCase();
+  const isCorrect = typed === correct.toLowerCase();
+  if(isCorrect) gameState.score += (gameState.pointEach || 5);
+  showAnswerOverlay(isCorrect, correct, meaning, nextQ);
+}
+
+// ── 4. 단어-뜻 짝 맞추기 ───────────────────────────────────
+function renderMatch(area, q) {
+  const pairs = q.pairs;
+  const leftItems = shuffleArr([...pairs]);
+  const rightItems = shuffleArr([...pairs]);
+  matchState = { selectedLeft: null, matched: 0, pairs, total: pairs.length, leftItems, rightItems };
+
+  area.innerHTML = `
+    <div class="game-type-badge">🔗 짝을 연결하세요</div>
+    <div class="question-word" style="padding:16px 10px;">
+      <p style="font-size:14px; color:var(--text2);">영어 단어와 뜻을 연결하세요!</p>
+    </div>
+    <div class="match-area">
+      <div class="match-col" id="match-left">
+        ${leftItems.map((w,i)=>`<button class="match-btn" id="ml-${i}" onclick="matchSelectLeft(${i})">${w.en}</button>`).join('')}
+      </div>
+      <div class="match-col" id="match-right">
+        ${rightItems.map((w,i)=>`<button class="match-btn" id="mr-${i}" onclick="matchSelectRight(${i})">${w.ko}</button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function matchSelectLeft(i) {
+  // 이미 매칭된 건 무시
+  const btn = document.getElementById('ml-'+i);
+  if(!btn || btn.classList.contains('matched')) return;
+  // 이전 선택 해제
+  if(matchState.selectedLeft !== null) {
+    const prev = document.getElementById('ml-'+matchState.selectedLeft);
+    if(prev) prev.classList.remove('selected-left');
+  }
+  matchState.selectedLeft = i;
+  btn.classList.add('selected-left');
+}
+
+function matchSelectRight(j) {
+  if(matchState.selectedLeft === null) { showToast('왼쪽에서 단어를 먼저 선택하세요!'); return; }
+  const leftIdx  = matchState.selectedLeft;
+  const leftWord = matchState.leftItems[leftIdx];
+  const rightWord= matchState.rightItems[j];
+  const leftBtn  = document.getElementById('ml-'+leftIdx);
+  const rightBtn = document.getElementById('mr-'+j);
+  if(!rightBtn || rightBtn.classList.contains('matched')) return;
+
+  if(leftWord.id === rightWord.id) {
+    leftBtn.classList.remove('selected-left');
+    leftBtn.classList.add('matched');
+    rightBtn.classList.add('matched');
+    matchState.matched++;
+    if(matchState.matched === matchState.total) {
+      // match 1세트 완료 = 1문제 배점
+      gameState.score += (gameState.pointEach || 5);
+      setTimeout(() => showAnswerOverlay(true, '완벽해요!', '모두 정확하게 연결했습니다 🎉', nextQ), 400);
+    }
+  } else {
+    leftBtn.classList.remove('selected-left');
+    leftBtn.classList.add('wrong-flash');
+    rightBtn.classList.add('wrong-flash');
+    setTimeout(() => {
+      leftBtn.classList.remove('wrong-flash');
+      rightBtn.classList.remove('wrong-flash');
+    }, 500);
+  }
+  matchState.selectedLeft = null;
+}
+
+function nextQ() { gameState.qIdx++; if(gameState.qIdx < gameState.questions.length) renderQuestion(); else endLevel(); }
+
+function endLevel() {
+  // 만점 = 문제수 × 문제당점수 = 항상 100점
+  const maxScore = gameState.questions.length * (gameState.pointEach || 5);
+  const score    = Math.min(100, Math.round(gameState.score / maxScore * 100));
+  const passed   = score >= 80;
+  const u = state.users.find(u => u.id === state.currentUserId);
+  u.progress[`${gameState.diff}_vl${gameState.level}`] = { passed, score };
+  saveLocal();
+  showScreen('screen-result');
+  document.getElementById('result-circle').textContent = score + '점';
+  document.getElementById('result-circle').style.background = passed ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('res-score').textContent = score;
+}
+
+// ── Firebase Auth 기반 어드민 로그인 ──────────────────────────
+async function checkAdminPw() {
+  const email = document.getElementById('admin-email-input').value.trim();
+  const pw = document.getElementById('admin-pw-input').value;
+  const errEl = document.getElementById('admin-login-error');
+  errEl.style.display = 'none';
+  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력하세요.'; errEl.style.display = 'block'; return; }
+  try {
+    await auth.signInWithEmailAndPassword(email, pw);
+    // onAuthStateChanged가 자동으로 screen-admin으로 이동
+  } catch(e) {
+    errEl.textContent = '로그인 실패: 이메일 또는 비밀번호를 확인하세요.';
+    errEl.style.display = 'block';
+  }
+}
+
+async function adminLogout() {
+  await auth.signOut();
+  showScreen('screen-splash');
+}
+
+// 비밀번호 변경 (Firebase Auth)
+async function changeAdminPw() {
+  const newPw = document.getElementById('admin-new-pw').value.trim();
+  if (!newPw || newPw.length < 6) return showToast('비밀번호는 6자 이상이어야 합니다.');
+  try {
+    await auth.currentUser.updatePassword(newPw);
+    showToast('✅ 비밀번호 변경 완료!');
+    document.getElementById('admin-new-pw').value = '';
+  } catch(e) {
+    showToast('변경 실패: 다시 로그인 후 시도하세요.');
+  }
+}
+
+async function adminAddWord() {
+  const en = document.getElementById('admin-en').value.trim();
+  const ko = document.getElementById('admin-ko').value.trim();
+  const diff = parseInt(document.getElementById('admin-diff-select').value);
+  const level = parseInt(document.getElementById('admin-level-select').value);
+  if (!en || !ko) return showToast('⚠️ 영어 단어와 한국어 뜻을 모두 입력하세요!');
+  await db.collection('words').add({ en, ko, diff: Number(diff), level: Number(level) });
+  document.getElementById('admin-en').value = '';
+  document.getElementById('admin-ko').value = '';
+  showToast(`✅ "${en}" 추가! (난이도 ${diff} / 레벨 ${level})`);
+  const snap = await db.collection('words').get();
+  state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderAdminWords();
+}
+
+async function adminBulkAdd() {
+  const defaultDiff = parseInt(document.getElementById('admin-diff-select').value);
+  const defaultLevel = parseInt(document.getElementById('admin-level-select').value);
+  const lines = document.getElementById('admin-bulk').value.trim().split('\n');
+  const words = [];
+  lines.forEach(line => {
+    const p = line.split(',');
+    if (p.length >= 2 && p[0].trim() && p[1].trim()) {
+      words.push({
+        en: p[0].trim(),
+        ko: p[1].trim(),
+        diff: p[2] ? Math.min(6, Math.max(1, parseInt(p[2]) || defaultDiff)) : defaultDiff,
+        level: p[3] ? Math.min(40, Math.max(1, parseInt(p[3]) || defaultLevel)) : defaultLevel
+      });
+    }
+  });
+  if (words.length === 0) return showToast('⚠️ 올바른 형식의 단어가 없습니다.');
+  await uploadWordsInChunks(words, () => {
+    document.getElementById('admin-bulk').value = '';
+  });
+}
+
+// ─── CSV 파일 업로드 ──────────────────────────────────────────
+let csvParsedWords = [];
+
+function handleCSVFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    parseCSV(text);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// CSV 드래그앤드롭
+(function setupDrop() {
+  window.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('csv-drop-zone');
+    if (!zone) return;
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
+    zone.addEventListener('dragleave', () => { zone.style.borderColor = 'rgba(255,255,255,0.2)'; });
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.style.borderColor = 'rgba(255,255,255,0.2)';
+      const file = e.dataTransfer.files[0];
+      if (file) { const r = new FileReader(); r.onload = ev => parseCSV(ev.target.result); r.readAsText(file, 'UTF-8'); }
+    });
+    zone.addEventListener('click', () => document.getElementById('csv-file-input').click());
+  });
+})();
+
+function parseCSV(text) {
+  const defaultDiff = parseInt(document.getElementById('admin-diff-select').value);
+  const defaultLevel = parseInt(document.getElementById('admin-level-select').value);
+  const lines = text.trim().split(/\r?\n/);
+  const words = [];
+  const errors = [];
+  lines.forEach((line, i) => {
+    if (!line.trim()) return;
+    // CSV 파싱: 쌍따옴표 처리 포함
+    const p = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    if (p.length >= 2 && p[0] && p[1]) {
+      words.push({
+        en: p[0],
+        ko: p[1],
+        diff: p[2] ? Math.min(6, Math.max(1, parseInt(p[2]) || defaultDiff)) : defaultDiff,
+        level: p[3] ? Math.min(40, Math.max(1, parseInt(p[3]) || defaultLevel)) : defaultLevel
+      });
+    } else {
+      errors.push(i + 1);
+    }
+  });
+  if (words.length === 0) { showToast('⚠️ 파싱 가능한 단어가 없습니다.'); return; }
+  csvParsedWords = words;
+
+  // 미리보기 표시
+  document.getElementById('csv-preview').style.display = 'block';
+  document.getElementById('csv-preview-label').textContent = `✅ ${words.length}개 단어 인식됨${errors.length > 0 ? ` (${errors.length}줄 건너뜀)` : ''}`;
+  const sample = words.slice(0, 5).map(w => `${w.en} → ${w.ko} (난이도${w.diff}/레벨${w.level})`).join('<br>');
+  document.getElementById('csv-sample').innerHTML = sample + (words.length > 5 ? `<br><span style="color:var(--accent);">...외 ${words.length - 5}개</span>` : '');
+  document.getElementById('csv-upload-btn').style.display = 'block';
+}
+
+function clearCSV() {
+  csvParsedWords = [];
+  document.getElementById('csv-preview').style.display = 'none';
+  document.getElementById('csv-upload-btn').style.display = 'none';
+  document.getElementById('csv-file-input').value = '';
+  document.getElementById('upload-progress-wrap').style.display = 'none';
+}
+
+async function startCSVUpload() {
+  if (csvParsedWords.length === 0) return showToast('⚠️ 업로드할 단어가 없습니다.');
+  document.getElementById('csv-upload-btn').style.display = 'none';
+  await uploadWordsInChunks(csvParsedWords, () => { clearCSV(); });
+}
+
+// ─── 핵심: 청크 단위 배치 업로드 (Firestore 500개 제한 대응) ───
+async function uploadWordsInChunks(words, onDone) {
+  const CHUNK = 400; // Firestore batch 안전 한도
+  const total = words.length;
+  let uploaded = 0;
+
+  document.getElementById('upload-progress-wrap').style.display = 'block';
+
+  const updateProgress = (done, total, label) => {
+    const pct = Math.round(done / total * 100);
+    document.getElementById('upload-progress-bar').style.width = pct + '%';
+    document.getElementById('upload-progress-pct').textContent = pct + '%';
+    document.getElementById('upload-progress-label').textContent = label;
+  };
+
+  try {
+    for (let i = 0; i < total; i += CHUNK) {
+      const chunk = words.slice(i, i + CHUNK);
+      const batch = db.batch();
+      chunk.forEach(w => {
+        batch.set(db.collection('words').doc(), { en: w.en, ko: w.ko, diff: Number(w.diff), level: Number(w.level) });
+      });
+      await batch.commit();
+      uploaded += chunk.length;
+      updateProgress(uploaded, total, `업로드 중... (${uploaded}/${total}개)`);
+      // 연속 배치 사이 짧은 딜레이로 Firestore 부하 분산
+      if (i + CHUNK < total) await new Promise(r => setTimeout(r, 300));
+    }
+
+    updateProgress(total, total, `완료! ${total}개 업로드됨 🎉`);
+    showToast(`✅ ${total}개 단어 업로드 완료!`);
+
+    // 단어 목록 새로고침
+    const snap = await db.collection('words').get();
+    state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderAdminWords();
+
+    if (onDone) onDone();
+    setTimeout(() => { document.getElementById('upload-progress-wrap').style.display = 'none'; }, 3000);
+  } catch(err) {
+    document.getElementById('upload-progress-label').textContent = `❌ 오류: ${err.message}`;
+    showToast('업로드 실패: ' + err.message);
+  }
+}
+
+async function adminDeleteWord(id) {
+  if (!confirm('정말 삭제하시겠습니까?')) return;
+  try {
+    await db.collection('words').doc(id).delete();
+    state.words = state.words.filter(w => w.id !== id);
+    renderAdminWords();
+    showToast('🗑️ 삭제되었습니다.');
+  } catch(e) { showToast('삭제 실패'); }
+}
+
+function renderAdminWords() {
+  const listEl = document.getElementById('admin-word-list');
+  const filterDiff = parseInt(document.getElementById('admin-filter-diff').value);
+  const filterLevel = parseInt(document.getElementById('admin-filter-level').value);
+
+  let filtered = [...state.words];
+  if (filterDiff > 0) filtered = filtered.filter(w => Number(w.diff) === Number(filterDiff));
+  if (filterLevel > 0) filtered = filtered.filter(w => Number(w.level) === Number(filterLevel));
+
+  // 난이도 → 레벨 → 영어 순으로 정렬
+  filtered.sort((a, b) => (a.diff - b.diff) || ((a.level||1) - (b.level||1)) || a.en.localeCompare(b.en));
+
+  const DIFF_NAMES = ['','Starter','Basic','Middle','Upper','Advanced','Expert'];
+  document.getElementById('admin-word-count').textContent = `총 ${state.words.length}개 중 ${filtered.length}개 표시`;
+  listEl.innerHTML = filtered.length === 0
+    ? '<p style="color:var(--text2); text-align:center; padding:20px;">해당 조건의 단어가 없습니다.</p>'
+    : filtered.map(w => `
+      <div class="admin-word-row">
+        <div>
+          <span style="font-size:13px; font-weight:800; color:var(--accent);">${w.en}</span>
+          <span style="font-size:12px; color:var(--text2); margin-left:6px;">${w.ko}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:10px; background:rgba(255,255,255,0.1); border-radius:6px; padding:2px 7px; white-space:nowrap;">
+            ${DIFF_NAMES[w.diff]||w.diff} · Lv.${w.level||'?'}
+          </span>
+          <button class="del-btn" onclick="adminDeleteWord('${w.id}')">삭제</button>
+        </div>
+      </div>
+    `).join('');
+}
+
+async function migrateWordTypes() {
+  const prog = document.getElementById('migrate-progress');
+  prog.style.display = 'block';
+  prog.textContent = '조회 중...';
+  const snap = await db.collection('words').get();
+  const toFix = snap.docs.filter(doc => {
+    const d = doc.data();
+    return typeof d.diff === 'string' || typeof d.level === 'string' || d.diff !== Math.floor(d.diff) || d.level !== Math.floor(d.level);
+  });
+  if (toFix.length === 0) { prog.textContent = '✅ 이미 모든 데이터가 정상입니다!'; return; }
+  prog.textContent = `수정 필요: ${toFix.length}개 문서 → 업데이트 중...`;
+  const CHUNK = 400;
+  let done = 0;
+  for (let i = 0; i < toFix.length; i += CHUNK) {
+    const batch = db.batch();
+    toFix.slice(i, i + CHUNK).forEach(doc => {
+      const d = doc.data();
+      batch.update(doc.ref, { diff: Number(d.diff), level: Number(d.level) });
+    });
+    await batch.commit();
+    done += Math.min(CHUNK, toFix.length - i);
+    prog.textContent = `업데이트 중... (${done}/${toFix.length})`;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  prog.textContent = `✅ ${toFix.length}개 문서 수정 완료!`;
+  const snap2 = await db.collection('words').get();
+  state.words = snap2.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderAdminWords();
+}
+
+function showToast(m) { const t=document.getElementById('toast'); t.innerHTML=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2500); }
+
+// ════════════════════════════════════════════════════════════
+//  발음 (Web Speech API - 모바일 내장, 무료)
+// ════════════════════════════════════════════════════════════
+let _speaking = false;
+function speak(word, btnEl) {
+  if (!window.speechSynthesis) { showToast('이 브라우저는 발음을 지원하지 않아요'); return; }
+  if (_speaking) { window.speechSynthesis.cancel(); }
+  const utt = new SpeechSynthesisUtterance(word);
+  utt.lang = 'en-US';
+  utt.rate = 0.85;
+  _speaking = true;
+  if (btnEl) btnEl.classList.add('speaking');
+  utt.onend = utt.onerror = () => {
+    _speaking = false;
+    if (btnEl) btnEl.classList.remove('speaking');
+  };
+  window.speechSynthesis.speak(utt);
+}
+
+// ════════════════════════════════════════════════════════════
+//  동기화 배지
+// ════════════════════════════════════════════════════════════
+function showSyncBadge(msg, isError = false) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'sync-badge show' + (isError ? ' error' : '');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ════════════════════════════════════════════════════════════
+//  PIN 등록 (regPin)
+// ════════════════════════════════════════════════════════════
+let regPin = '';
+function regPinPress(key) {
+  if (key === 'del') {
+    regPin = regPin.slice(0, -1);
+  } else if (regPin.length < 4) {
+    regPin += key;
+  }
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('rpd' + i);
+    if (d) d.className = 'pin-dot' + (i < regPin.length ? ' filled' : '');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Firestore 유저 저장/불러오기
+// ════════════════════════════════════════════════════════════
+async function saveUserToFirestore(user) {
+  try {
+    await db.collection('user_progress').doc(String(user.id)).set({
+      name: user.name,
+      char: user.char,
+      pin: user.pin || '',
+      progress: user.progress || {},
+      wordsStudied: user.wordsStudied || {},
+      updatedAt: Date.now()
+    });
+    showSyncBadge('☁️ 저장됨');
+  } catch(e) {
+    showSyncBadge('⚠️ 동기화 실패', true);
+  }
+}
+
+async function loadUserFromFirestore(userId) {
+  try {
+    const doc = await db.collection('user_progress').doc(String(userId)).get();
+    return doc.exists ? doc.data() : null;
+  } catch(e) { return null; }
+}
+
+// PIN으로 유저 찾기 (다른 기기 이어하기)
+async function findUserByNameAndPin(name, pin) {
+  try {
+    const snap = await db.collection('user_progress')
+      .where('name', '==', name)
+      .where('pin', '==', pin)
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    return { id: doc.id, ...doc.data() };
+  } catch(e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════
+//  다른 기기에서 이어하기 (PIN 로그인 팝업)
+// ════════════════════════════════════════════════════════════
+let _pinLoginPin = '';
+function showPinLogin() {
+  _pinLoginPin = '';
+  const overlay = document.createElement('div');
+  overlay.id = 'pin-login-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9500;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:var(--card);border-radius:22px;padding:28px;width:100%;max-width:360px;">
+      <h3 style="text-align:center;margin-bottom:6px;">📱 기기 이어하기</h3>
+      <p style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:16px;">등록한 이름과 PIN을 입력하세요</p>
+      <input type="text" id="pl-name" placeholder="이름" style="margin-bottom:12px;">
+      <p style="font-weight:800;margin-bottom:8px;text-align:center;">PIN 4자리</p>
+      <div class="pin-dots" id="pl-pin-dots">
+        <div class="pin-dot" id="pld0"></div><div class="pin-dot" id="pld1"></div>
+        <div class="pin-dot" id="pld2"></div><div class="pin-dot" id="pld3"></div>
+      </div>
+      <div class="pin-pad" style="margin-top:8px;">
+        <div class="pin-key" onclick="pinLoginPress('1')">1</div>
+        <div class="pin-key" onclick="pinLoginPress('2')">2</div>
+        <div class="pin-key" onclick="pinLoginPress('3')">3</div>
+        <div class="pin-key" onclick="pinLoginPress('4')">4</div>
+        <div class="pin-key" onclick="pinLoginPress('5')">5</div>
+        <div class="pin-key" onclick="pinLoginPress('6')">6</div>
+        <div class="pin-key" onclick="pinLoginPress('7')">7</div>
+        <div class="pin-key" onclick="pinLoginPress('8')">8</div>
+        <div class="pin-key" onclick="pinLoginPress('9')">9</div>
+        <div></div>
+        <div class="pin-key" onclick="pinLoginPress('0')">0</div>
+        <div class="pin-key del" onclick="pinLoginPress('del')">⌫</div>
+      </div>
+      <button class="btn btn-primary" onclick="submitPinLogin()" style="margin-top:16px;">이어하기 →</button>
+      <button class="btn btn-ghost" style="font-size:13px;" onclick="document.getElementById('pin-login-overlay').remove()">취소</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function pinLoginPress(key) {
+  if (key === 'del') {
+    _pinLoginPin = _pinLoginPin.slice(0, -1);
+  } else if (_pinLoginPin.length < 4) {
+    _pinLoginPin += key;
+  }
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('pld' + i);
+    if (d) d.className = 'pin-dot' + (i < _pinLoginPin.length ? ' filled' : '');
+  }
+}
+
+async function submitPinLogin() {
+  const name = (document.getElementById('pl-name')?.value || '').trim();
+  const pin  = _pinLoginPin;
+  if (!name) { showToast('이름을 입력하세요!'); return; }
+  if (pin.length < 4) { showToast('PIN 4자리를 입력하세요!'); return; }
+  showToast('🔍 확인 중...');
+  const remote = await findUserByNameAndPin(name, pin);
+  if (!remote) { showToast('❌ 이름 또는 PIN이 맞지 않아요'); return; }
+
+  // 로컬에 유저 추가/업데이트
+  const uid = remote.id;
+  let user = state.users.find(u => String(u.id) === String(uid));
+  if (!user) {
+    user = { id: uid, name: remote.name, char: remote.char || 0, pin: remote.pin, progress: {}, wordsStudied: {} };
+    state.users.push(user);
+  }
+  // 원격 progress로 덮어쓰기
+  user.progress = remote.progress || {};
+  user.wordsStudied = remote.wordsStudied || {};
+  user.pin = remote.pin;
+  saveLocal();
+  document.getElementById('pin-login-overlay')?.remove();
+  loginUser(uid);
+  showSyncBadge('✅ 이어하기 완료!');
+}
+
+function saveLocal() {
+  localStorage.setItem('wq_state', JSON.stringify(state));
+  // 현재 유저 Firestore 동기화 (PIN 있는 경우)
+  if (state.currentUserId) {
+    const u = state.users.find(u => String(u.id) === String(state.currentUserId));
+    if (u && u.pin) saveUserToFirestore(u);
+  }
+}
+function shuffleArr(arr) { return [...arr].sort(()=>Math.random()-0.5); }
+function confirmQuitGame() { if(confirm('종료할까요?')) showScreen('screen-difficulty'); }
+</script>
+</body>
+</html>
