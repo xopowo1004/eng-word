@@ -476,7 +476,7 @@
 //  🚨 FIREBASE CONFIG
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDFeb-2833Gpfh8qQdXeWTo2QVAwF1JcLI",
+  apiKey: "수정",
   authDomain: "e-word-71f2c.firebaseapp.com",
   projectId: "e-word-71f2c",
   storageBucket: "e-word-71f2c.appspot.com",
@@ -502,12 +502,58 @@ let state = { words: [], users: [], currentUserId: null };
 let gameState = { diff: 1, level: 1, currentWords: [], questions: [], qIdx: 0, score: 0 };
 let selectedCharIdx = 0;
 
+// ════════════════════════════════════════════════════════════
+//  단어 캐시 유틸 (Firestore 읽기 절감)
+//  - 캐시 유효기간: 6시간
+//  - 단어 추가/수정/삭제 시 캐시 자동 갱신
+// ════════════════════════════════════════════════════════════
+const WORDS_CACHE_KEY  = 'wq_words_cache';
+const WORDS_CACHE_TIME = 'wq_words_cache_time';
+const CACHE_TTL_MS     = 6 * 60 * 60 * 1000; // 6시간
+
+function isCacheValid() {
+  const t = localStorage.getItem(WORDS_CACHE_TIME);
+  return t && (Date.now() - parseInt(t)) < CACHE_TTL_MS;
+}
+
+function saveWordsCache(words) {
+  try {
+    localStorage.setItem(WORDS_CACHE_KEY, JSON.stringify(words));
+    localStorage.setItem(WORDS_CACHE_TIME, Date.now().toString());
+  } catch(e) {
+    // 용량 초과 등 예외 무시 (캐시 실패해도 앱은 정상 동작)
+  }
+}
+
+function clearWordsCache() {
+  localStorage.removeItem(WORDS_CACHE_KEY);
+  localStorage.removeItem(WORDS_CACHE_TIME);
+}
+
+async function loadWords() {
+  if (isCacheValid()) {
+    try {
+      const cached = localStorage.getItem(WORDS_CACHE_KEY);
+      if (cached) {
+        state.words = JSON.parse(cached);
+        showSyncBadge('📦 캐시에서 단어 로드됨');
+        return;
+      }
+    } catch(e) { /* 캐시 파싱 오류 → Firestore에서 새로 받아옴 */ }
+  }
+  // 캐시 없거나 만료 → Firestore에서 불러오고 캐시 저장
+  const snap = await db.collection('words').get();
+  state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  saveWordsCache(state.words);
+}
+
 window.onload = async function() {
   const raw = localStorage.getItem('wq_state');
   if (raw) { const p = JSON.parse(raw); state.users = p.users || []; }
   renderCharGrid();
-  const snap = await db.collection('words').get();
-  state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // ✅ 캐시 적용: 6시간 안에 접속하면 Firestore 읽기 0회
+  await loadWords();
 
   // 로그인된 유저가 있으면 Firestore에서 최신 progress 동기화
   if (state.currentUserId) {
@@ -1394,6 +1440,7 @@ async function adminAddWord() {
   showToast(`✅ "${en}" 추가! (난이도 ${diff} / 레벨 ${level})`);
   const snap = await db.collection('words').get();
   state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  saveWordsCache(state.words); // ✅ 캐시 갱신
   renderAdminWords();
 }
 
@@ -1531,6 +1578,7 @@ async function uploadWordsInChunks(words, onDone) {
     // 단어 목록 새로고침
     const snap = await db.collection('words').get();
     state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    saveWordsCache(state.words); // ✅ 캐시 갱신
     renderAdminWords();
 
     if (onDone) onDone();
@@ -1546,6 +1594,7 @@ async function adminDeleteWord(id) {
   try {
     await db.collection('words').doc(id).delete();
     state.words = state.words.filter(w => w.id !== id);
+    saveWordsCache(state.words); // ✅ 캐시 갱신
     renderAdminWords();
     showToast('🗑️ 삭제되었습니다.');
   } catch(e) { showToast('삭제 실패'); }
@@ -1610,6 +1659,7 @@ async function migrateWordTypes() {
   prog.textContent = `✅ ${toFix.length}개 문서 수정 완료!`;
   const snap2 = await db.collection('words').get();
   state.words = snap2.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  saveWordsCache(state.words); // ✅ 캐시 갱신
   renderAdminWords();
 }
 
