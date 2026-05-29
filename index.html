@@ -483,6 +483,11 @@ const firebaseConfig = {
   messagingSenderId: "22719281578",
   appId: "1:22719281578:web:4762476dfb8a309690d3d3"
 };
+// Firebase 로딩 확인 후 초기화
+if (typeof firebase === 'undefined') {
+  document.body.innerHTML = '<div style="color:white;text-align:center;padding:60px;font-size:18px;">⚠️ 네트워크 오류로 앱을 불러올 수 없습니다.<br><br><button onclick="location.reload()" style="padding:12px 24px;border-radius:12px;border:none;font-size:16px;cursor:pointer;">🔄 새로고침</button></div>';
+  throw new Error('Firebase SDK not loaded');
+}
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
@@ -531,20 +536,31 @@ function clearWordsCache() {
 }
 
 async function loadWords() {
+  // 1) 캐시 유효하면 Firestore 읽기 0회
   if (isCacheValid()) {
     try {
       const cached = localStorage.getItem(WORDS_CACHE_KEY);
       if (cached) {
-        state.words = JSON.parse(cached);
-        showSyncBadge('📦 캐시에서 단어 로드됨');
-        return;
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          state.words = parsed;
+          return;
+        }
       }
-    } catch(e) { /* 캐시 파싱 오류 → Firestore에서 새로 받아옴 */ }
+    } catch(e) { /* 파싱 오류 → Firestore 재시도 */ }
   }
-  // 캐시 없거나 만료 → Firestore에서 불러오고 캐시 저장
-  const snap = await db.collection('words').get();
-  state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  saveWordsCache(state.words);
+  // 2) 캐시 없거나 만료 → Firestore에서 불러오고 저장
+  try {
+    const snap = await db.collection('words').get();
+    state.words = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    saveWordsCache(state.words);
+  } catch(e) {
+    // Firestore 오류 시 만료 캐시라도 사용
+    try {
+      const cached = localStorage.getItem(WORDS_CACHE_KEY);
+      if (cached) state.words = JSON.parse(cached);
+    } catch(e2) { state.words = []; }
+  }
 }
 
 window.onload = async function() {
